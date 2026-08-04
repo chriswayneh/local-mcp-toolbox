@@ -1,0 +1,27 @@
+# Opt-in local inspection profile. Replace example paths before use.
+profile: standard
+filesystem:
+  approved_roots:
+    - /absolute/path/to/approved/project
+  allowed_extensions: [".md", ".txt", ".json", ".yaml", ".yml", ".toml", ".py", ".ts", ".js", ".go"]
+  blocked_patterns: [".env", ".env.*", "id_rsa", "id_ed25519", "*.pem", "*.key", "credentials*"]
+  max_file_bytes: 1048576
+  max_directory_entries: 500
+integrations:
+  docker: true
+  git: true
+  github: false
+  kubernetes: false
+  external_network: false
+  external_ai: false
+limits:
+  max_records: 100
+  max_output_bytes: 262144
+  timeout_seconds: 10
+audit:
+  path: ./audit/events.jsonl
+  retention_days: 30
+redaction:
+  redact_home_paths: true
+  redact_emails: false
+  redact_ip_addresses: false

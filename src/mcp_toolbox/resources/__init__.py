@@ -1,0 +1,1 @@
+"""Safe MCP resources."""

@@ -1,0 +1,26 @@
+# Copy this file and supply only directories and integrations you explicitly approve.
+profile: standard
+filesystem:
+  approved_roots: []
+  allowed_extensions: [".md", ".txt", ".json", ".yaml", ".yml", ".toml"]
+  blocked_patterns: [".env", ".env.*", "*.pem", "*.key"]
+  max_file_bytes: 1048576
+  max_directory_entries: 500
+integrations:
+  docker: false
+  git: false
+  github: false
+  kubernetes: false
+  external_network: false
+  external_ai: false
+limits:
+  max_records: 100
+  max_output_bytes: 262144
+  timeout_seconds: 10
+audit:
+  path: ./audit/events.jsonl
+  retention_days: 30
+redaction:
+  redact_home_paths: true
+  redact_emails: false
+  redact_ip_addresses: false
