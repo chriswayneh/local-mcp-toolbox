@@ -20,14 +20,14 @@
 
 ## Phase 3 — MCP Server
 
-- [ ] Configure the official MCP SDK and stdio transport
-- [ ] Register enabled tool modules, safe resources, and reusable prompts
-- [ ] Add server startup validation and MCP integration tests
+- [x] Configure the official MCP SDK and stdio transport
+- [x] Register safe server metadata, resources, and reusable prompts
+- [x] Add server startup validation and MCP integration tests
 
 ## Version 1.0 — Secure Read-Only Core
 
 - [x] Typed settings, permission service, redaction, audit records, contracts, and safe errors
-- [ ] MCP stdio server, resources, prompts, and startup validation
+- [x] MCP stdio server, resources, prompts, and startup validation
 - [ ] System, filesystem, Git, Docker, logs, scanners, infrastructure, and incident modules
 - [ ] CLI, doctor, Docker packaging, docs, demo, and security regressions
 

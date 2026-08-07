@@ -4,7 +4,7 @@
 
 ## Status
 
-This repository has completed **Phase 2 — Secure Core Foundation**. The MCP server and tool modules have not yet been registered; Phase 3 will add the stdio server, safe resources, and reusable prompts.
+This repository has completed **Phase 3 — MCP Server**. The server now runs over stdio with startup policy validation, audited protocol requests, safe metadata resources, reusable safety prompts, and one read-only server-status tool. Environment-inspection modules arrive in the next phase.
 
 ### Implemented foundation
 
@@ -14,6 +14,7 @@ This repository has completed **Phase 2 — Secure Core Foundation**. The MCP se
 - Structured, client-safe response and error contracts
 - Sanitized append-only JSONL audit events with request metadata, timing, permission decision, and redaction count
 - Unit and adversarial regressions for configuration, path traversal, sensitive paths, extension restrictions, integration denial, redaction, and audit leakage
+- MCP stdio transport with a subprocess integration test, safe MCP resources/prompts, and audited protocol requests
 
 ## Why this project exists
 
@@ -88,15 +89,17 @@ demo/            Explicitly non-production test fixtures
 - Audit logging and redaction are cross-cutting services, not optional behavior added per tool.
 - Deterministic collection/parsing remains separate from any future AI-generated explanation.
 
-## Planned quick start
+## Quick start
 
-The commands below become available after the MCP server is implemented:
+Python 3.12+ is required. The current server deliberately starts with the restrictive profile and exposes only safe server metadata until Version 1 tool modules are implemented.
 
 ```powershell
-uv sync --extra dev
-uv run local-mcp-toolbox doctor
-uv run local-mcp-toolbox serve --config config/restricted.yml
+python -m venv .venv
+.\.venv\Scripts\python -m pip install -e ".[dev]"
+.\.venv\Scripts\local-mcp-toolbox serve --config config\restricted.yml
 ```
+
+See [getting started](docs/getting-started.md) for a generic stdio client configuration.
 
 ## Documentation
 
@@ -104,6 +107,7 @@ uv run local-mcp-toolbox serve --config config/restricted.yml
 - [Security model](docs/security-model.md)
 - [Threat model](docs/threat-model.md)
 - [Permissions](docs/permissions.md)
+- [Getting started](docs/getting-started.md)
 - [Roadmap](ROADMAP.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security reporting](SECURITY.md)

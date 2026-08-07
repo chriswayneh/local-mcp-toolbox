@@ -34,6 +34,18 @@ sequenceDiagram
 | Audit service | JSONL event records and retention | Stores sanitized summaries, not raw tool content. |
 | Configuration | Validated profile loading | Configuration cannot silently elevate access. |
 
+## Current MCP surface
+
+Phase 3 supports stdio only. Startup first loads the explicit YAML profile, validates it, resolves approved roots, and composes the permission, redaction, and audit services. If validation fails, the CLI reports a safe configuration error on stderr and exits before the MCP protocol starts.
+
+The current MCP surface intentionally contains only server-generated capabilities:
+
+- `toolbox_server_status` — read-only server metadata; it never inspects the host.
+- `toolbox://server/status`, `toolbox://configuration/summary`, `toolbox://security/policy`, and `toolbox://modules` resources.
+- `analyze_repository`, `summarize_recent_errors`, `troubleshoot_container`, and `perform_security_review` safe prompt templates.
+
+Every MCP request is recorded through audit middleware. The middleware sends only sanitized parameters to the JSONL audit logger; audit records never include raw secrets or tool output.
+
 ## Version 1 module order
 
 1. Foundation: settings, permissions, redaction, auditing, response contracts
