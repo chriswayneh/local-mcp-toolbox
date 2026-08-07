@@ -4,7 +4,16 @@
 
 ## Status
 
-This repository is in **Phase 1 — Discovery and Architecture**. The scaffold, security model, configuration profiles, and architecture decisions are established. The read-only implementation has not begun; no MCP tools are registered yet.
+This repository has completed **Phase 2 — Secure Core Foundation**. The MCP server and tool modules have not yet been registered; Phase 3 will add the stdio server, safe resources, and reusable prompts.
+
+### Implemented foundation
+
+- Strict Pydantic configuration models with YAML loading and profile invariants
+- Canonical approved-root filesystem authorization, blocked sensitive-file patterns, and integration gating
+- Central redaction for common credentials, keys, tokens, connection passwords, and optional privacy identifiers
+- Structured, client-safe response and error contracts
+- Sanitized append-only JSONL audit events with request metadata, timing, permission decision, and redaction count
+- Unit and adversarial regressions for configuration, path traversal, sensitive paths, extension restrictions, integration denial, redaction, and audit leakage
 
 ## Why this project exists
 
@@ -81,7 +90,7 @@ demo/            Explicitly non-production test fixtures
 
 ## Planned quick start
 
-The commands below become available after the core foundation is implemented:
+The commands below become available after the MCP server is implemented:
 
 ```powershell
 uv sync --extra dev
