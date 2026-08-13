@@ -57,6 +57,12 @@
 - [x] Add Dependabot, issue and pull-request templates, release controls, and SBOM generation
 - [x] Validate documentation commands and publish the Version 1 release checklist
 
+## Version 1.0 — Stable Release
+
+- [x] Complete the secure read-only Version 1 feature scope
+- [x] Validate on Python 3.12 and 3.13 with quality, security, documentation, and package checks
+- [x] Publish release documentation, SBOM generation, and protected release controls
+
 ## Version 1.5 — Connected Integrations
 
 - [ ] Read-only GitHub and Kubernetes integrations

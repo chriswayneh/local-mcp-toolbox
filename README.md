@@ -4,7 +4,7 @@
 
 ## Status
 
-This repository has completed **Phase 7 — CI and Release Preparation**. Version 1 is now feature-complete and ready for release-candidate review. The server runs over stdio with startup policy validation, audited protocol requests, safe metadata resources, reusable safety prompts, narrowly scoped read-only inspection tools, copy-ready client configuration templates, a synthetic local demo, and CI/release controls.
+**Version 1.0.0** is the first stable release of Local MCP Toolbox. The server runs over stdio with startup policy validation, audited protocol requests, safe metadata resources, reusable safety prompts, narrowly scoped read-only inspection tools, copy-ready client configuration templates, a synthetic local demo, and CI/release controls.
 
 The Version 1 inspection modules now include safe system metadata, approved-root filesystem inspection, explicit-allowlist Git inspection, opt-in Docker metadata, health, and bounded-log inspection, dedicated approved-root log analysis, a fixed-command Bandit adapter, top-level infrastructure detection, and deterministic incident evidence tools.
 
