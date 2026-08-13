@@ -1,0 +1,25 @@
+name: Feature request
+description: Propose a scoped capability while preserving the local-first security boundary.
+title: "feature: "
+labels: [enhancement, needs-triage]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Scoped proposal
+      description: Describe least-privilege inputs, outputs, and non-goals.
+    validations:
+      required: true
+  - type: textarea
+    id: security
+    attributes:
+      label: Security impact
+      description: Note filesystem, network, Docker, Kubernetes, AI-provider, or write-access implications.
+    validations:
+      required: true

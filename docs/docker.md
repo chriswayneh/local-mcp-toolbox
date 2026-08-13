@@ -2,6 +2,23 @@
 
 The MCP server uses stdio, so the primary container workflow is for controlled local integration rather than a network service. The production image runs as UID/GID `10001`, uses a read-only root filesystem in Compose, drops Linux capabilities, sets `no-new-privileges`, limits writable storage to `/tmp` and the audit volume, and provides a non-mutating `doctor` health check.
 
+## Deployment boundary
+
+```mermaid
+flowchart LR
+  Client["Local MCP client"] <-->|"attached stdio"| Toolbox["Toolbox container\nnon-root, read-only root"]
+  Toolbox --> Audit["Named audit volume"]
+  Toolbox --> Tmp["tmpfs /tmp"]
+  Toolbox -. "optional read-only API" .-> Proxy["Docker socket proxy"]
+  Proxy --> Socket["Host Docker socket"]
+  Toolbox -. "advanced only" .-> Direct["Direct socket mount"]
+  Direct --> Socket
+```
+
+The dashed direct-mount path carries host-control risk and is not part of the
+recommended deployment.  The container remains attached to its client: it is
+not an HTTP service and must not be detached.
+
 ## Build and validate
 
 ```powershell

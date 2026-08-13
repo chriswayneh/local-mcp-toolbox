@@ -12,3 +12,26 @@ The intended evaluation order is:
 6. Apply output limits, redact the result, and record the decision.
 
 An error at any point denies the request. Future advanced mode must be a separate, explicit configuration path; it will not inherit elevated access merely because a module is enabled.
+
+## Decision flow
+
+```mermaid
+flowchart TD
+  A["Typed request"] --> B{"Schema and limits valid?"}
+  B -->|no| X["Deny: safe structured error"]
+  B -->|yes| C{"Module enabled?"}
+  C -->|no| X
+  C -->|yes| D{"Read-only supported operation?"}
+  D -->|no| X
+  D -->|yes| E{"Canonical target under approved root?"}
+  E -->|no| X
+  E -->|yes| F{"Integration allowlist matches?"}
+  F -->|no| X
+  F -->|yes| G["Collect bounded data"]
+  G --> H["Redact + audit sanitized metadata"]
+  H --> I["Return safe response"]
+```
+
+The same logic applies whether a client is Codex, Claude, VS Code, or another
+stdio-capable MCP client.  Client trust prompts do not replace the server-side
+authorization decision.

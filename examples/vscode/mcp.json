@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "local-mcp-toolbox": {
+      "type": "stdio",
+      "command": "<TOOLBOX_EXE>",
+      "args": ["serve", "--config", "<CONFIG_FILE>"]
+    }
+  }
+}

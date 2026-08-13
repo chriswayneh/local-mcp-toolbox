@@ -1,0 +1,5 @@
+2026-08-13T14:00:00Z INFO request_id=req-demo-001 service=checkout message="starting synthetic request"
+2026-08-13T14:00:02Z WARN request_id=req-demo-001 dependency=inventory message="upstream timeout after 1500ms"
+2026-08-13T14:00:03Z ERROR request_id=req-demo-001 message="checkout unavailable; retry budget exhausted"
+2026-08-13T14:01:00Z INFO request_id=req-demo-002 message="recovery probe started"
+2026-08-13T14:01:01Z INFO request_id=req-demo-002 authorization="Bearer sk-demo-1234567890abcdefghijklmnop" message="synthetic token must be redacted"

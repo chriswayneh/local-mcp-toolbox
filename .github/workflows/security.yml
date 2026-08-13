@@ -1,0 +1,39 @@
+name: Security and supply chain
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install project and release tooling
+        run: python -m pip install -e ".[dev,docker,release]"
+      - name: Static security scan
+        run: python -m bandit -q -r src
+      - name: Audit dependencies
+        run: python -m pip_audit
+      - name: Build CycloneDX SBOM
+        run: |
+          New-Item -ItemType Directory -Force artifacts | Out-Null
+          cyclonedx-py environment --output-file artifacts/sbom.cdx.json
+        shell: pwsh
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-cyclonedx
+          path: artifacts/sbom.cdx.json
+          if-no-files-found: error

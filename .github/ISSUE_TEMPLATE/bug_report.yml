@@ -1,0 +1,51 @@
+name: Bug report
+description: Report a reproducible problem without secrets or sensitive host data.
+title: "bug: "
+labels: [bug, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include credentials, private keys, audit-log content, internal hostnames, or customer data.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Include the expected and observed safe behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Safe reproduction steps
+      description: Use synthetic paths/data where possible.
+      placeholder: |
+        1. Start with config/restricted.yml
+        2. Run ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Affected surface
+      options:
+        - CLI
+        - MCP server
+        - Filesystem tools
+        - Git tools
+        - Docker tools
+        - Logs, security, infrastructure, or incident tools
+        - Documentation or demo
+        - CI or packaging
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitized diagnostics
+      description: Remove secrets and private data before pasting output.

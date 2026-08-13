@@ -226,7 +226,7 @@ def _parse_bandit_findings(output: str, root: Path) -> list[dict[str, Any]]:
 def _normalize_bandit_finding(finding: dict[str, Any], root: Path) -> dict[str, Any]:
     filename = str(finding.get("filename", ""))
     try:
-        safe_path = str(Path(filename).resolve(strict=False).relative_to(root))
+        safe_path = Path(filename).resolve(strict=False).relative_to(root).as_posix()
     except ValueError:
         safe_path = Path(filename).name
     return {

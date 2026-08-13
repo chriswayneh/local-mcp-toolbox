@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "local-mcp-toolbox": {
+      "command": "${LOCAL_MCP_TOOLBOX_EXE}",
+      "args": ["serve", "--config", "${LOCAL_MCP_TOOLBOX_CONFIG}"]
+    }
+  }
+}
