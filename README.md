@@ -99,7 +99,7 @@ demo/            Explicitly non-production test fixtures
 
 ## Quick start
 
-Python 3.12+ is required. The current server deliberately starts with the restrictive profile and exposes only safe server metadata until Version 1 tool modules are implemented.
+Python 3.12+ is required. The restrictive profile starts with server metadata and safe system inspection only; filesystem access needs explicit roots, and Docker, Git, logs, scanners, and infrastructure modules need their own explicit opt-in configuration.
 
 ```powershell
 python -m venv .venv
