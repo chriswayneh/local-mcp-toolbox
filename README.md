@@ -1,153 +1,204 @@
+<div align="center">
+
 # Local MCP Toolbox
 
-> A secure, local-first Model Context Protocol (MCP) server for inspecting and troubleshooting development environments without granting an AI assistant unrestricted machine access.
+### Secure, local-first visibility for AI-assisted development—without unrestricted machine access.
 
-## Status
+A read-only [Model Context Protocol](https://modelcontextprotocol.io/) server that gives AI clients narrowly scoped, auditable access to developer-environment signals: system metadata, approved files, repositories, logs, containers, scanners, and incident evidence.
 
-**Version 1.0.0** is the first stable release of Local MCP Toolbox. The server runs over stdio with startup policy validation, audited protocol requests, safe metadata resources, reusable safety prompts, narrowly scoped read-only inspection tools, copy-ready client configuration templates, a synthetic local demo, and CI/release controls.
+[![Release](https://img.shields.io/github/v/release/chriswayneh/local-mcp-toolbox?display_name=tag&sort=semver)](https://github.com/chriswayneh/local-mcp-toolbox/releases)
+[![Python](https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Quality](https://github.com/chriswayneh/local-mcp-toolbox/actions/workflows/quality.yml/badge.svg?branch=main)](https://github.com/chriswayneh/local-mcp-toolbox/actions/workflows/quality.yml)
+[![Security](https://github.com/chriswayneh/local-mcp-toolbox/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/chriswayneh/local-mcp-toolbox/actions/workflows/security.yml)
+[![License](https://img.shields.io/github/license/chriswayneh/local-mcp-toolbox)](LICENSE)
+[![Scope](https://img.shields.io/badge/scope-read--only-2E7D32)](docs/security-model.md)
 
-The Version 1 inspection modules now include safe system metadata, approved-root filesystem inspection, explicit-allowlist Git inspection, opt-in Docker metadata, health, and bounded-log inspection, dedicated approved-root log analysis, a fixed-command Bandit adapter, top-level infrastructure detection, and deterministic incident evidence tools.
+**Current release:** [v1.0.0](https://github.com/chriswayneh/local-mcp-toolbox/releases/tag/v1.0.0) — stable read-only core
 
-### Implemented foundation
+[Quick Start](#quick-start) · [How It Works](#how-it-works) · [Tools](#what-you-get) · [Security](#security-by-design) · [Architecture](#architecture) · [Demo](#see-it-safely) · [Roadmap](ROADMAP.md) · [Contributing](CONTRIBUTING.md)
 
-- Strict Pydantic configuration models with YAML loading and profile invariants
-- Canonical approved-root filesystem authorization, blocked sensitive-file patterns, and integration gating
-- Central redaction for PEM blocks, common API/service credentials, authorization headers, connection passwords, and optional privacy identifiers
-- Structured, client-safe response and error contracts
-- Sanitized, size-bounded JSONL audit events with retention, request metadata, timing, actual permission outcome, and redaction count
-- Unit and adversarial regressions for configuration, path traversal, sensitive paths, extension restrictions, integration denial, redaction, and audit leakage
-- MCP stdio transport with a subprocess integration test, safe MCP resources/prompts, and audited protocol requests
-- Read-only system metadata and approved-root filesystem listing, metadata, and redacted text reads
-- Read-only Git status, branch, recent-commit, and diff-summary inspection using fixed argument templates
-- Opt-in Docker container metadata, health, and bounded recent-log inspection through the official SDK
-- Dedicated approved-root log tails, literal search, and deterministic error grouping with redaction
-- Security-scanner availability inventory and normalized Bandit findings from separate approved roots
-- Top-level project-type detection and infrastructure configuration inventory from separate approved roots
-- Incident timeline extraction and evidence-only summaries from separate approved log roots
+</div>
 
-## Why this project exists
+---
 
-AI assistants are useful at diagnosing infrastructure and code, but a generic shell tool or unrestricted Docker socket turns a helpful integration into a high-privilege control plane. Local MCP Toolbox is designed to expose narrow, typed, auditable, read-only capabilities instead: inspect a repository, summarize logs, review Docker state, and identify risky configuration.
+## What This Is
 
-## Version 1 scope
+AI assistants are useful when they can inspect the environment around a problem. A generic shell tool or unrestricted Docker socket, however, turns that useful visibility into a high-privilege control plane.
 
-Version 1 delivers the secure read-only core:
+Local MCP Toolbox takes a different path: it exposes a small set of typed, read-only MCP tools behind explicit policy checks. An operator chooses the approved roots and integrations; the server validates the request, collects only bounded data, redacts sensitive material, records sanitized audit metadata, and returns structured evidence to the client.
 
-- MCP stdio server and Typer CLI
-- Permission profiles, path containment, output limits, structured errors, audit records, and centralized redaction
-- System, filesystem, Git, Docker, logs, security-scanner, infrastructure-inventory, and incident-summary modules
-- Native and Docker deployment, tests, validated client configuration examples, and a safe walkthrough demo
+The result is a practical way to connect MCP-capable clients to local developer signals without treating client access as host access.
 
-GitHub, Kubernetes, local-LLM, HTTP transport, dashboard, and all write operations are deliberately deferred. See [ROADMAP.md](ROADMAP.md).
+## What You Get
 
-## Architecture
+| Capability | What it does | Security boundary |
+| --- | --- | --- |
+| System | Safe host metadata and developer-tool availability | No environment variables, usernames, process data, or executable paths |
+| Filesystem | Approved-root listing, metadata, and text inspection | Canonical containment, sensitive-path blocklist, extension allowlist, bounded reads |
+| Git | Repository status, branch, commits, and diff summaries | Explicit repository allowlist; fixed, non-interactive Git commands |
+| Docker | Opt-in container metadata, health, and bounded logs | Official SDK only; no lifecycle, exec, mount, environment, or command access |
+| Logs | Tails, literal search, and deterministic error grouping | Dedicated approved roots, output limits, and central redaction |
+| Security | Bandit availability and normalized scan findings | Fixed scanner invocation; no user-controlled command arguments or fixes |
+| Infrastructure | Project-type detection and top-level configuration inventory | Separate approved roots; no recursive content inspection |
+| Incidents | Timestamped evidence and deterministic summaries | Read-only, bounded observations—never root-cause claims |
+| Audit | Sanitized JSONL accountability trail | Shape-only request summaries, retention, and size limits |
 
-```mermaid
-flowchart LR
-  C["MCP client"] --> T["stdio transport"]
-  T --> S["MCP server / tool registry"]
-  S --> P{"Permission decision"}
-  P -->|allowed| M["Narrow read-only tool module"]
-  P -->|denied| E["Safe structured error"]
-  M --> R["Redaction + output limits"]
-  R --> C
-  S --> A["Audit log (sanitized metadata only)"]
-  M --> F["Approved local integrations"]
-```
+For parameters, output schemas, and every individual guardrail, see the full [tool catalog](docs/tools.md).
 
-All analyzed content is untrusted data. Tool modules never interpret file, log, issue, label, or commit content as instructions.
+## Security by Design
 
-## Security model
+The security model is the product boundary, not a feature bolted on afterward.
 
-- **Deny by default:** the `restricted` profile permits only configured filesystem roots and no integrations.
-- **Read-only Version 1:** no generic command execution, mutations, stop/restart operations, commits, or remote tool execution.
-- **Narrow interfaces:** every tool has typed, validated inputs; external binaries (when needed) use fixed argument templates and no shell.
-- **Data minimization:** canonical path checks, symlink-escape prevention, blocked sensitive patterns, result limits, and redaction happen before output.
-- **Accountability:** every request writes a sanitized JSONL audit event. Secrets are never written to audit logs.
+| Control | Protection |
+| --- | --- |
+| Deny by default | The restrictive profile has no approved filesystem roots or integrations. |
+| Approved roots | Canonical containment blocks arbitrary filesystem access and escape paths. |
+| Read-only surface | No generic shell, mutation, commit, lifecycle, or remote-execution tool is registered. |
+| Fixed subprocesses | External binaries use fixed argument templates, `shell=False`, scrubbed environments, timeouts, and output caps. |
+| Central redaction | PEM blocks, credentials, cookies, authorization headers, connection strings, and optional privacy identifiers are redacted before output. |
+| Output bounds | File reads, collections, subprocess output, and responses are size-limited. |
+| Sanitized audit | Requests record safe metadata, actual outcomes, and redaction counts—not raw secrets or tool output. |
+| Explicit integrations | Git, Docker, logs, scanners, infrastructure, and incident tools must be configured intentionally. |
+| Untrusted evidence | Retrieved files, logs, commit messages, and metadata are data—not instructions. |
 
-See [docs/security-model.md](docs/security-model.md), [docs/threat-model.md](docs/threat-model.md), and [docs/adr/](docs/adr/).
+Read the [security model](docs/security-model.md), [threat model](docs/threat-model.md), and the security-focused [architecture decisions](docs/adr/) for the complete rationale.
 
-## Proposed layout
+## How It Works
 
-```text
-src/mcp_toolbox/
-  server/        MCP lifecycle and modular registration
-  tools/         Narrow read-only tool domains
-  permissions/   Profile and integration authorization
-  redaction/     Sensitive-data detection and fingerprints
-  audit/         Sanitized JSONL audit events
-  config/        Typed settings loading
-  models/        Shared response and error contracts
-  resources/     Safe MCP resources
-  prompts/       Reusable safe MCP prompts
-  cli/           Operator-facing commands
-tests/           Unit, integration, and security regressions
-config/          Restricted, standard, and example profiles
-docs/            Architecture, threat model, ADRs, and operating guides
-examples/        MCP-client configuration examples
-demo/            Explicitly non-production test fixtures
-```
+1. An MCP client requests one registered tool.
+2. The toolbox validates typed inputs and bounded parameters.
+3. Permissions, approved roots, and integration allowlists are checked.
+4. A narrow read-only operation collects the permitted data.
+5. Results are redacted and bounded before they cross the MCP boundary.
+6. Sanitized request metadata is recorded in the audit log.
+7. The client receives a safe structured result or error.
 
-## Engineering decisions
+## Quick Start
 
-- Read-only by default makes the security boundary understandable and contains the blast radius.
-- Generic shell execution is prohibited because validation cannot reliably make arbitrary command execution safe.
-- Local AI is preferred for later summarization features so sensitive logs do not leave the machine by default.
-- Docker socket access is opt-in and will be documented as a privilege boundary, not treated as routine plumbing.
-- Untrusted content will be labeled in response envelopes to reduce prompt-injection risk.
-- Audit logging and redaction are cross-cutting services, not optional behavior added per tool.
-- Deterministic collection/parsing remains separate from any future AI-generated explanation.
+### Requirements
 
-## Quick start
+- Python 3.12 or later
+- An MCP-capable client for connection after the server is validated
 
-Python 3.12+ is required. The restrictive profile starts with server metadata and safe system inspection only; filesystem access needs explicit roots, and Docker, Git, logs, scanners, and infrastructure modules need their own explicit opt-in configuration.
+The default `restricted` profile is intentionally safe: it starts with no approved filesystem roots and no optional integrations.
+
+### Windows (PowerShell)
 
 ```powershell
+git clone https://github.com/chriswayneh/local-mcp-toolbox.git
+Set-Location local-mcp-toolbox
 python -m venv .venv
 .\.venv\Scripts\python -m pip install -e ".[dev,docker]"
 .\.venv\Scripts\local-mcp-toolbox doctor --config config\restricted.yml
 .\.venv\Scripts\local-mcp-toolbox serve --config config\restricted.yml
 ```
 
-`doctor` validates configuration and reports non-mutating prerequisite checks. See [client configuration](docs/client-configuration.md) for ready-to-copy stdio templates and [the demo walkthrough](docs/demo-walkthrough.md) for a safe first inspection.
+### macOS / Linux
 
-## Current tool catalog
+```bash
+git clone https://github.com/chriswayneh/local-mcp-toolbox.git
+cd local-mcp-toolbox
+python3 -m venv .venv
+.venv/bin/python -m pip install -e ".[dev,docker]"
+.venv/bin/local-mcp-toolbox doctor --config config/restricted.yml
+.venv/bin/local-mcp-toolbox serve --config config/restricted.yml
+```
 
-| Module | Tools | Guardrails |
-| --- | --- | --- |
-| Server | `toolbox_server_status` | Server-generated metadata only. |
-| System | `system_info`, `disk_usage`, `installed_developer_tools` | Standard-library metadata only; no environment-variable or process command-line exposure. |
-| Filesystem | `filesystem_list_directory`, `filesystem_file_metadata`, `filesystem_read_text_file` | Canonical approved-root containment, Windows alias-aware sensitive-path blocklist, bounded filtered enumeration, extension allowlist, compatible file/result limits, and redaction. |
-| Git | `git_repository_status`, `git_current_branch`, `git_recent_commits`, `git_diff_summary` | Explicit integration plus exact repository allowlist; fixed non-interactive Git arguments, no shell, time/output bounds, and redaction. |
-| Docker | `docker_list_containers`, `docker_container_details`, `docker_container_logs`, `docker_unhealthy_containers` | Explicit opt-in; official SDK only; no lifecycle, exec, image, network, volume, label, mount, environment, or command access; bounded output and redaction. |
-| Logs | `logs_tail_file`, `logs_search`, `logs_error_summary` | Separate explicit log roots; extension/blocklist checks, bounded files/records, literal-only search, secret redaction, and evidence-only summaries. |
-| Security | `security_scanner_inventory`, `security_scan_repository` | Explicit scanner opt-in and separate roots; a fixed `bandit -q -r <approved-root> -f json` template, no shell, timeout/output bounds, normalized/redacted findings, and no automatic fixes. |
-| Infrastructure | `infra_detect_project_types`, `infra_configuration_inventory` | Explicit separate roots; marker names and top-level configuration names only—no file-content reads or recursive traversal. |
-| Incident | `incident_extract_timeline`, `incident_summarize_evidence` | Explicit separate log roots; bounded/redacted evidence only, timestamp extraction, no causal claims, and no AI dependency. |
+`doctor` is a non-mutating preflight check. The server uses stdio; reserve standard output for MCP traffic and keep diagnostics on standard error. For a guided setup and policy configuration, see [getting started](docs/getting-started.md).
 
-See [tool catalog](docs/tools.md) for parameters and output behavior.
+## Connect Your AI Client
+
+The repository includes maintained stdio configuration templates for supported clients. Adding a client entry lets the client start the process—it does **not** grant the server broader permissions.
+
+| Client | Copy-ready template |
+| --- | --- |
+| Codex | [`examples/codex/config.toml`](examples/codex/config.toml) |
+| Claude Desktop | [`examples/claude-desktop/claude_desktop_config.json`](examples/claude-desktop/claude_desktop_config.json) |
+| Claude Code | [`examples/claude-code/.mcp.json`](examples/claude-code/.mcp.json) |
+| Visual Studio Code | [`examples/vscode/mcp.json`](examples/vscode/mcp.json) |
+
+Replace the intentionally unresolved paths, then configure the smallest local policy that serves the task. See [client configuration](docs/client-configuration.md) for exact installation notes and the important separation between client startup and server authorization.
+
+## See It Safely
+
+This project is designed for evidence, not a dashboard. The [synthetic demo walkthrough](docs/demo-walkthrough.md) provides a reproducible way to see the policy boundary in action without real credentials, repositories, production logs, or a host Docker socket.
+
+It demonstrates a safe inspection sequence:
+
+```text
+toolbox_server_status          → verify the server and active profile
+logs_tail_file                 → view redacted synthetic log evidence
+logs_error_summary             → group observed errors without causal claims
+infra_detect_project_types     → inspect demo project metadata
+docker_unhealthy_containers    → observe an intentionally unhealthy demo service
+```
+
+The demo’s fabricated token is redacted, disabled integrations return a structured denial, and its audit trail contains sanitized metadata only. Follow the [walkthrough](docs/demo-walkthrough.md) to run it locally.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  Client["MCP client"] --> Transport["stdio transport"]
+
+  subgraph Boundary["Local policy enforcement boundary"]
+    Registry["MCP server / tool registry"] --> Permission{"Permission check"}
+    Permission -->|Denied| Error["Safe structured error"]
+    Permission -->|Allowed| Tool["Narrow read-only tool"]
+    Tool --> Guard["Redaction + output limits"]
+  end
+
+  Transport --> Registry
+  Guard --> Client
+  Registry -. "sanitized metadata" .-> Audit["JSONL audit log"]
+  Tool --> Integration["Explicitly approved local integrations"]
+
+  classDef boundary fill:#EAF3FF,stroke:#4A78A8,color:#102A43
+  classDef control fill:#E9F7EF,stroke:#2E7D32,color:#173E22
+  classDef denial fill:#FDECEC,stroke:#C62828,color:#5C1111
+  class Registry,Tool,Guard boundary
+  class Permission,Audit,Integration control
+  class Error denial
+```
+
+All retrieved content remains untrusted data. The full component model and trust-boundary discussion live in [architecture](docs/architecture.md).
+
+## Repository Structure
+
+```text
+src/mcp_toolbox/  MCP server, tool modules, permissions, redaction, audit, config, and CLI
+tests/            Unit, integration, and security regression tests
+config/           Restricted, standard, and container policy profiles
+docs/             Architecture, threat model, operating guides, ADRs, and tool reference
+examples/         MCP client configuration templates
+demo/             Synthetic services, logs, and intentionally insecure test fixtures
+.github/          CI, security, documentation, release, Dependabot, and contribution templates
+```
 
 ## Documentation
 
-- [Architecture](docs/architecture.md)
-- [Security model](docs/security-model.md)
-- [Threat model](docs/threat-model.md)
-- [Permissions](docs/permissions.md)
-- [Getting started](docs/getting-started.md)
-- [Client configuration](docs/client-configuration.md)
-- [Operator troubleshooting](docs/troubleshooting.md)
-- [Container deployment](docs/docker.md)
-- [Safe demo walkthrough](docs/demo-walkthrough.md)
-- [CI and release controls](docs/ci-and-release.md)
-- [Version 1 release checklist](docs/release-checklist.md)
-- [Tool catalog](docs/tools.md)
-- [Roadmap](ROADMAP.md)
-- [Contributing](CONTRIBUTING.md)
-- [Security reporting](SECURITY.md)
+| Document | Purpose |
+| --- | --- |
+| [Architecture](docs/architecture.md) | System design, components, and data flow |
+| [Security Model](docs/security-model.md) | Controls and trust boundaries |
+| [Threat Model](docs/threat-model.md) | Threat analysis and mitigations |
+| [Permissions](docs/permissions.md) | Authorization sequence and profile behavior |
+| [Tool Catalog](docs/tools.md) | Inputs, outputs, and module-level guardrails |
+| [Client Configuration](docs/client-configuration.md) | Codex, Claude, and VS Code setup |
+| [Docker](docs/docker.md) | Hardened container profiles and socket-proxy guidance |
+| [Demo Walkthrough](docs/demo-walkthrough.md) | Synthetic end-to-end policy demonstration |
+| [CI and Release](docs/ci-and-release.md) | Quality, security, docs, package, and release controls |
+| [Roadmap](ROADMAP.md) | Planned Version 1.5+ scope |
 
-## Why This Project Matters
+## Project Status
 
-This project demonstrates how to connect AI systems to real developer environments without equating "useful" with "unrestricted." It combines MCP protocol design, least-privilege authorization, DevOps diagnostics, redaction, auditing, container safety, and testable operational tooling.
+Version 1.0.0 delivers the secure read-only core: MCP stdio transport, typed tools, policy enforcement, centralized redaction, structured errors, sanitized auditing, Docker packaging, a synthetic demo, and CI/release controls.
+
+GitHub, Kubernetes, local LLM, HTTP transport, dashboards, and all write operations are intentionally deferred. See the [roadmap](ROADMAP.md) and [changelog](CHANGELOG.md) for release history and future scope.
+
+## Contributing and Security
+
+Contributions are welcome when they preserve the project’s least-privilege model. Start with [CONTRIBUTING.md](CONTRIBUTING.md), use the repository templates for bugs and feature proposals, and report vulnerabilities through the process in [SECURITY.md](SECURITY.md).
 
 ## License
 
