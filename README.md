@@ -15,7 +15,7 @@ A read-only [Model Context Protocol](https://modelcontextprotocol.io/) server th
 
 **Current release:** [v1.0.0](https://github.com/chriswayneh/local-mcp-toolbox/releases/tag/v1.0.0) — stable read-only core
 
-[Quick Start](#quick-start) · [How It Works](#how-it-works) · [Tools](#what-you-get) · [Security](#security-by-design) · [Architecture](#architecture) · [Demo](#see-it-safely) · [Roadmap](ROADMAP.md) · [Contributing](CONTRIBUTING.md)
+[Quick Start](#quick-start) · [Tools](#what-you-get) · [Security](#security-by-design) · [How It Works](#how-it-works) · [Connect a Client](#connect-your-ai-client) · [Architecture](#architecture) · [Demo](#see-it-safely) · [Roadmap](ROADMAP.md) · [Contributing](CONTRIBUTING.md)
 
 </div>
 
@@ -44,34 +44,6 @@ The result is a practical way to connect MCP-capable clients to local developer 
 | Audit | Sanitized JSONL accountability trail | Shape-only request summaries, retention, and size limits |
 
 For parameters, output schemas, and every individual guardrail, see the full [tool catalog](docs/tools.md).
-
-## Security by Design
-
-The security model is the product boundary, not a feature bolted on afterward.
-
-| Control | Protection |
-| --- | --- |
-| Deny by default | The restrictive profile has no approved filesystem roots or integrations. |
-| Approved roots | Canonical containment blocks arbitrary filesystem access and escape paths. |
-| Read-only surface | No generic shell, mutation, commit, lifecycle, or remote-execution tool is registered. |
-| Fixed subprocesses | External binaries use fixed argument templates, `shell=False`, scrubbed environments, timeouts, and output caps. |
-| Central redaction | PEM blocks, credentials, cookies, authorization headers, connection strings, and optional privacy identifiers are redacted before output. |
-| Output bounds | File reads, collections, subprocess output, and responses are size-limited. |
-| Sanitized audit | Requests record safe metadata, actual outcomes, and redaction counts—not raw secrets or tool output. |
-| Explicit integrations | Git, Docker, logs, scanners, infrastructure, and incident tools must be configured intentionally. |
-| Untrusted evidence | Retrieved files, logs, commit messages, and metadata are data—not instructions. |
-
-Read the [security model](docs/security-model.md), [threat model](docs/threat-model.md), and the security-focused [architecture decisions](docs/adr/) for the complete rationale.
-
-## How It Works
-
-1. An MCP client requests one registered tool.
-2. The toolbox validates typed inputs and bounded parameters.
-3. Permissions, approved roots, and integration allowlists are checked.
-4. A narrow read-only operation collects the permitted data.
-5. Results are redacted and bounded before they cross the MCP boundary.
-6. Sanitized request metadata is recorded in the audit log.
-7. The client receives a safe structured result or error.
 
 ## Quick Start
 
@@ -105,6 +77,34 @@ python3 -m venv .venv
 ```
 
 `doctor` is a non-mutating preflight check. The server uses stdio; reserve standard output for MCP traffic and keep diagnostics on standard error. For a guided setup and policy configuration, see [getting started](docs/getting-started.md).
+
+## Security by Design
+
+The security model is the product boundary, not a feature bolted on afterward.
+
+| Control | Protection |
+| --- | --- |
+| Deny by default | The restrictive profile has no approved filesystem roots or integrations. |
+| Approved roots | Canonical containment blocks arbitrary filesystem access and escape paths. |
+| Read-only surface | No generic shell, mutation, commit, lifecycle, or remote-execution tool is registered. |
+| Fixed subprocesses | External binaries use fixed argument templates, `shell=False`, scrubbed environments, timeouts, and output caps. |
+| Central redaction | PEM blocks, credentials, cookies, authorization headers, connection strings, and optional privacy identifiers are redacted before output. |
+| Output bounds | File reads, collections, subprocess output, and responses are size-limited. |
+| Sanitized audit | Requests record safe metadata, actual outcomes, and redaction counts—not raw secrets or tool output. |
+| Explicit integrations | Git, Docker, logs, scanners, infrastructure, and incident tools must be configured intentionally. |
+| Untrusted evidence | Retrieved files, logs, commit messages, and metadata are data—not instructions. |
+
+Read the [security model](docs/security-model.md), [threat model](docs/threat-model.md), and the security-focused [architecture decisions](docs/adr/) for the complete rationale.
+
+## How It Works
+
+1. An MCP client requests one registered tool.
+2. The toolbox validates typed inputs and bounded parameters.
+3. Permissions, approved roots, and integration allowlists are checked.
+4. A narrow read-only operation collects the permitted data.
+5. Results are redacted and bounded before they cross the MCP boundary.
+6. Sanitized request metadata is recorded in the audit log.
+7. The client receives a safe structured result or error.
 
 ## Connect Your AI Client
 
@@ -213,5 +213,6 @@ Contributions are welcome when they preserve the project’s least-privilege mod
 <br>
 
 <p align="center">
-  If Local MCP Toolbox saved you time wiring an AI client to a local environment, a ⭐ is appreciated.
+  <strong>Built to explore a simple idea: AI tooling can be useful without being all-powerful.</strong><br>
+  <sub>If this project proves useful, a ⭐ is appreciated.</sub>
 </p>
