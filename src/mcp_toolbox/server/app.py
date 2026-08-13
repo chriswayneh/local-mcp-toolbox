@@ -46,6 +46,9 @@ _PROMPT_NAMES = (
 )
 
 
+# This override depends on MCPServer's private _handle_call_tool implementation.
+# When upgrading the bounded mcp[cli] dependency, compare that method and its Context/
+# _subscriptions usage before widening the supported SDK range.
 class ToolboxMCPServer(MCPServer):
     """MCP server that converts expected tool failures into safe structured results."""
 
