@@ -10,6 +10,8 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 MARKDOWN_FILES = (
     REPOSITORY_ROOT / "README.md",
     REPOSITORY_ROOT / "ROADMAP.md",
+    REPOSITORY_ROOT / "CHANGELOG.md",
+    REPOSITORY_ROOT / "SECURITY.md",
     *sorted((REPOSITORY_ROOT / "docs").rglob("*.md")),
 )
 LOCAL_LINK_PATTERN = re.compile(r"(?<!!)\[[^]]+\]\(([^)]+)\)")

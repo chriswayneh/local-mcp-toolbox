@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "local-mcp-toolbox"
-version = "0.1.0a0"
+version = "1.0.0"
 description = "Secure, local-first, read-only MCP tools for developer environment inspection."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -12,7 +12,7 @@ license = { text = "MIT" }
 authors = [{ name = "Local MCP Toolbox contributors" }]
 keywords = ["mcp", "model-context-protocol", "security", "devops", "docker"]
 classifiers = [
-  "Development Status :: 2 - Pre-Alpha",
+  "Development Status :: 5 - Production/Stable",
   "Intended Audience :: Developers",
   "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
@@ -27,6 +27,12 @@ dependencies = [
   "structlog>=24.4,<26",
   "typer>=0.15,<1",
 ]
+
+[project.urls]
+Homepage = "https://github.com/chriswayneh/local-mcp-toolbox"
+Documentation = "https://github.com/chriswayneh/local-mcp-toolbox#readme"
+Issues = "https://github.com/chriswayneh/local-mcp-toolbox/issues"
+Security = "https://github.com/chriswayneh/local-mcp-toolbox/security/policy"
 
 [project.optional-dependencies]
 dev = [
