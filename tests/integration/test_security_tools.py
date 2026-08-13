@@ -71,7 +71,7 @@ def test_security_scan_returns_normalized_redacted_findings(tmp_path: Path, monk
             assert inventory.is_error is False
             assert result.is_error is False
             finding = result.structured_content["data"]["findings"][0]
-            assert finding["file"] == "src\\settings.py"
+            assert finding["file"] == "src/settings.py"
             assert finding["finding_id"] == "B105"
             assert "ghp_123456789012345678901234567890" not in str(result.structured_content)
             assert "[REDACTED_PASSWORD]" in str(result.structured_content)
