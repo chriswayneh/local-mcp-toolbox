@@ -200,14 +200,18 @@ GitHub, Kubernetes, local LLM, HTTP transport, dashboards, and all write operati
 
 Contributions are welcome when they preserve the project’s least-privilege model. Start with [CONTRIBUTING.md](CONTRIBUTING.md), use the repository templates for bugs and feature proposals, and report vulnerabilities through the process in [SECURITY.md](SECURITY.md).
 
-## Built With
-
-[Python](https://www.python.org/) · [Model Context Protocol](https://modelcontextprotocol.io/) · [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk) · [Pydantic](https://docs.pydantic.dev/) · [Typer](https://typer.tiangolo.com/) · [Docker](https://www.docker.com/)
-
-## Finding It Useful?
-
-If Local MCP Toolbox saved you time connecting an AI client to a local environment—or helped you start from a safer boundary—a ⭐ is appreciated.
+---
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+[MIT](LICENSE). Use it, adapt it, and build a safer local AI workflow with it.
+
+## Built with
+
+[Python](https://www.python.org/) · [Model Context Protocol](https://modelcontextprotocol.io/) · [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk) · [Pydantic](https://docs.pydantic.dev/) · [Typer](https://typer.tiangolo.com/) · [Docker](https://www.docker.com/)
+
+<br>
+
+<p align="center">
+  If Local MCP Toolbox saved you time wiring an AI client to a local environment, a ⭐ is appreciated.
+</p>
