@@ -1,0 +1,23 @@
+# Advanced option only. Prefer the socket-proxy profile in compose.yaml.
+services:
+  toolbox-direct-docker:
+    profiles: ["direct-docker"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: local-mcp-toolbox:local
+    init: true
+    stdin_open: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    user: "10001:10001"
+    volumes:
+      - toolbox-direct-audit:/var/lib/local-mcp-toolbox/audit
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+volumes:
+  toolbox-direct-audit:

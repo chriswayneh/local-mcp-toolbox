@@ -58,6 +58,7 @@ class IntegrationSettings(BaseModel):
     logs: bool = False
     security_scanners: bool = False
     infrastructure: bool = False
+    incident: bool = False
     github: bool = False
     kubernetes: bool = False
     external_network: bool = False
@@ -90,6 +91,10 @@ class SecuritySettings(FilesystemSettings):
 
 class InfrastructureSettings(FilesystemSettings):
     """Explicit approved roots for top-level infrastructure metadata inventory."""
+
+
+class IncidentSettings(LogSettings):
+    """Explicit approved roots and limits for deterministic incident evidence tools."""
 
 
 class LimitSettings(BaseModel):
@@ -133,6 +138,7 @@ class ToolboxSettings(BaseModel):
     logs: LogSettings = Field(default_factory=LogSettings)
     security: SecuritySettings = Field(default_factory=SecuritySettings)
     infrastructure: InfrastructureSettings = Field(default_factory=InfrastructureSettings)
+    incident: IncidentSettings = Field(default_factory=IncidentSettings)
     limits: LimitSettings = Field(default_factory=LimitSettings)
     audit: AuditSettings = Field(default_factory=AuditSettings)
     redaction: RedactionSettings = Field(default_factory=RedactionSettings)

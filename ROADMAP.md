@@ -34,15 +34,16 @@
 - [x] Dedicated approved-root log tails, search, and deterministic error summaries
 - [x] Security-scanner inventory and fixed-command Bandit adapter with normalized findings
 - [x] Top-level infrastructure project detection and configuration inventory
-- [ ] Incident evidence summaries and correlation
+- [x] Incident timeline extraction and deterministic evidence summaries
 
 ## Phase 5 — CLI and Docker Deployment
 
-- [ ] Add operator doctor checks and task commands
-- [ ] Add production and development Dockerfiles
-- [ ] Add Docker Compose profiles, health checks, non-root runtime, and an audit volume
-- [ ] Document native execution, socket-proxy use, and direct-socket risk
-- [ ] Test native and containerized startup
+- [x] Add operator doctor checks
+- [x] Add cross-platform task commands
+- [x] Add production and development Dockerfiles
+- [x] Add Docker Compose profiles, health checks, non-root runtime, and an audit volume
+- [x] Document native execution, socket-proxy use, and direct-socket risk
+- [x] Test native and containerized startup
 
 ## Phase 6 — Documentation and Demo
 

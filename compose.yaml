@@ -1,0 +1,77 @@
+name: local-mcp-toolbox
+
+services:
+  toolbox:
+    profiles: ["core"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: local-mcp-toolbox:local
+    init: true
+    stdin_open: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    user: "10001:10001"
+    volumes:
+      - toolbox-audit:/var/lib/local-mcp-toolbox/audit
+    healthcheck:
+      test: ["CMD", "local-mcp-toolbox", "doctor", "--config", "/app/config/container.yml"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  docker-socket-proxy:
+    profiles: ["docker"]
+    image: tecnativa/docker-socket-proxy:0.5.0
+    environment:
+      AUTH: 0
+      CONTAINERS: 1
+      EVENTS: 0
+      IMAGES: 0
+      NETWORKS: 0
+      POST: 0
+      VOLUMES: 0
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: ["docker_api"]
+
+  toolbox-docker:
+    profiles: ["docker"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: local-mcp-toolbox:local
+    init: true
+    stdin_open: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    user: "10001:10001"
+    environment:
+      DOCKER_HOST: tcp://docker-socket-proxy:2375
+    depends_on:
+      docker-socket-proxy:
+        condition: service_started
+    volumes:
+      - toolbox-docker-audit:/var/lib/local-mcp-toolbox/audit
+    networks: ["docker_api"]
+
+volumes:
+  toolbox-audit:
+  toolbox-docker-audit:
+
+networks:
+  docker_api:
+    internal: true

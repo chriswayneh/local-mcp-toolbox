@@ -13,6 +13,7 @@ integrations:
   logs: false
   security_scanners: false
   infrastructure: false
+  incident: false
   github: false
   kubernetes: false
   external_network: false
@@ -37,6 +38,12 @@ infrastructure:
   allowed_extensions: []
   blocked_patterns: [".env", ".env.*", "*.pem", "*.key", "credentials*"]
   max_file_bytes: 1048576
+  max_directory_entries: 500
+incident:
+  approved_roots: []
+  allowed_extensions: [".log", ".txt", ".jsonl", ".out"]
+  blocked_patterns: [".env", ".env.*", "*.pem", "*.key", "credentials*"]
+  max_file_bytes: 5242880
   max_directory_entries: 500
 limits:
   max_records: 100

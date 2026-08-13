@@ -7,10 +7,23 @@ Create a local virtual environment, install the project, and start the default r
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python -m pip install -e ".[dev,docker]"
+.\.venv\Scripts\local-mcp-toolbox doctor --config config\restricted.yml
 .\.venv\Scripts\local-mcp-toolbox serve --config config\restricted.yml
 ```
 
 The stdio process must reserve standard output for MCP protocol messages. Operator errors are written to standard error; do not wrap the command in a shell tool exposed to an AI client.
+
+`doctor` is a non-mutating preflight command. It validates the configuration and reports audit-directory readiness plus prerequisite availability for enabled Git, Docker, and Bandit scanner modules. It does not contact Docker, run a scanner, or create audit directories.
+
+On Windows, the same maintained tasks are available without Make:
+
+```powershell
+.\scripts\tasks.ps1 doctor
+.\scripts\tasks.ps1 test
+.\scripts\tasks.ps1 compose-validate
+```
+
+See [container deployment](docker.md) for native versus containerized operation and Docker socket guidance.
 
 ## Generic MCP client configuration
 
@@ -31,7 +44,7 @@ Start with `restricted.yml`. To inspect an approved project later, copy `config/
 
 ## Current capabilities
 
-The server exposes server metadata plus read-only system, approved-root filesystem, exact-allowlist Git, opt-in Docker inspection, and opt-in dedicated log-file inspection. Kubernetes, GitHub, and all mutating capabilities are not registered.
+The server exposes server metadata plus read-only system, approved-root filesystem, exact-allowlist Git, opt-in Docker inspection, dedicated log-file inspection, fixed-command Bandit scanning, infrastructure metadata inventory, and deterministic incident evidence tools. Kubernetes, GitHub, and all mutating capabilities are not registered.
 
 ## Enable Docker inspection deliberately
 

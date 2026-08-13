@@ -1,0 +1,7 @@
+# Socket-proxy profile. Docker access remains read-only at the tool boundary.
+profile: standard
+integrations:
+  docker: true
+audit:
+  path: /var/lib/local-mcp-toolbox/audit/events.jsonl
+  retention_days: 30

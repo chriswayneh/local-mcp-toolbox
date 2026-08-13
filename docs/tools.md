@@ -143,3 +143,23 @@ infrastructure:
 ```
 
 The current inventory recognizes common Docker, project-language, Terraform, Helm/Kustomize, Ansible, and GitHub Actions markers. It deliberately returns metadata only; deeper parsing and dependency analysis remain future work.
+
+## Incident evidence
+
+| Tool | Inputs | Output | Safety controls |
+| --- | --- | --- | --- |
+| `incident_extract_timeline` | Absolute approved incident-log `path`, optional bounded `lines` | Trailing observed lines with source timestamp and severity when detectable | Uses separate approved log roots, extension/blocklist checks, file/record limits, and central redaction. It does not reorder or infer missing timestamps. |
+| `incident_summarize_evidence` | Absolute approved incident-log `path`, optional bounded line window and group `limit` | Severity counts, grouped high-severity observations, unknowns, and next checks | Deterministic only; returns no causal hypothesis, redacts samples before grouping, and labels confidence as observed log evidence only. |
+
+Enable incident evidence tools only for dedicated log roots:
+
+```yaml
+profile: standard
+integrations:
+  incident: true
+incident:
+  approved_roots:
+    - C:\\absolute\\path\\to\\incident-logs
+```
+
+No incident tool writes files, creates tickets, sends notifications, changes infrastructure, or invokes an AI provider.
