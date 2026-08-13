@@ -26,4 +26,4 @@ Redaction recognizes PEM private-key blocks, API/service credentials, authorizat
 
 There is no `exec`, `shell`, `terminal`, or `run_command` MCP tool. If a later scanner adapter invokes an installed executable, it will use a fixed program path and argument array, an allowlisted argument template, scrubbed environment, time limit, output cap, and audit event. It will not invoke a shell.
 
-Docker socket access is equivalent to high host privilege in many deployments. Containerized Docker support is deferred until it can recommend a constrained socket proxy; unrestricted socket mounting will not be a default configuration.
+Docker socket access is equivalent to high host privilege in many deployments. Containerized Docker inspection is opt-in; the shipped socket-proxy profile is recommended, while direct socket mounting is documented only as an advanced, high-risk configuration.

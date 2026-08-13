@@ -144,5 +144,7 @@ def test_log_and_incident_tools_redact_multiline_private_keys_in_line_outputs(
                 assert result.is_error is False
                 assert key_material not in str(result.structured_content)
                 assert "[REDACTED_PRIVATE_KEY]" in str(result.structured_content)
+            assert results[0].structured_content["metadata"]["redaction_count"] >= 1
+            assert results[3].structured_content["metadata"]["redaction_count"] >= 1
 
     asyncio.run(scenario())

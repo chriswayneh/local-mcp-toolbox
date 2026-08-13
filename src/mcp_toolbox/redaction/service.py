@@ -57,15 +57,27 @@ class Redactor:
         _Rule(
             "CONNECTION_PASSWORD",
             re.compile(
-                r"(?i)(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?)://[^\s:/@]+:(?P<secret>[^\s@]+)@"
+                r"(?i)[a-z][a-z0-9+.-]*://[^\s:/@]+:(?P<secret>[^\s]+)@"
+                r"(?=[a-z0-9.-]+(?::\d+)?(?:[/?#]|$))"
             ),
         ),
         _Rule(
             "CONNECTION_SECRET",
             re.compile(
-                r"(?i)(?:accountkey|sharedaccesskey|clientsecret|client_secret)\s*=\s*"
+                r"(?i)(?:accountkey|sharedaccesskey)\s*=\s*"
                 r"['\"]?(?P<secret>[^\s;'\"]{8,})"
             ),
+        ),
+        _Rule(
+            "SECRET_ASSIGNMENT",
+            re.compile(
+                r"(?i)(?<![a-z0-9_.-])[a-z0-9_.-]*secret[a-z0-9_.-]*\s*[:=]\s*['\"]?"
+                r"(?P<secret>(?!\[REDACTED_)[^\s'\";\[]{8,})"
+            ),
+        ),
+        _Rule(
+            "COOKIE",
+            re.compile(r"(?im)^(?:set-)?cookie\s*:\s*(?P<secret>[^\r\n]{1,2048})"),
         ),
         _Rule(
             "API_KEY",
