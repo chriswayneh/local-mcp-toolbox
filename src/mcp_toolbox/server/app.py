@@ -7,10 +7,20 @@ from typing import Any, cast
 
 from mcp.server import MCPServer
 from mcp.server.context import ServerMiddleware
-from mcp_types import ToolAnnotations
+from mcp.server.mcpserver.context import Context
+from mcp.server.mcpserver.exceptions import ToolError
+from mcp.shared.exceptions import MCPError
+from mcp_types import (
+    CallToolRequestParams,
+    CallToolResult,
+    InputRequiredResult,
+    TextContent,
+    ToolAnnotations,
+)
+from pydantic import ValidationError
 
 from mcp_toolbox import __version__
-from mcp_toolbox.models import ResponseMetadata, ToolResponse
+from mcp_toolbox.models import ErrorCategory, ResponseMetadata, ToolboxError, ToolResponse
 from mcp_toolbox.server.audit_middleware import AuditMiddleware
 from mcp_toolbox.server.runtime import ServerRuntime
 from mcp_toolbox.tools.docker import register_docker_tools
@@ -36,10 +46,90 @@ _PROMPT_NAMES = (
 )
 
 
+class ToolboxMCPServer(MCPServer):
+    """MCP server that converts expected tool failures into safe structured results."""
+
+    async def _handle_call_tool(
+        self,
+        ctx: Any,
+        params: CallToolRequestParams,
+    ) -> CallToolResult | InputRequiredResult:
+        context = Context(
+            request_context=ctx,
+            mcp_server=self,
+            input_params=params,
+            subscriptions=self._subscriptions,
+        )
+        try:
+            return await self.call_tool(params.name, params.arguments or {}, context)
+        except MCPError:
+            raise
+        except Exception as error:
+            toolbox_error = _nested_toolbox_error(error)
+            if toolbox_error is not None:
+                return _error_result(toolbox_error)
+            if isinstance(error, ToolError) and error.__cause__ is None:
+                return _error_result(
+                    ToolboxError(
+                        ErrorCategory.UNSUPPORTED_OPERATION,
+                        "The requested tool is not registered.",
+                        remediation="Call tools/list and choose a tool advertised by this server.",
+                    )
+                )
+            if _has_validation_error(error):
+                return _error_result(
+                    ToolboxError(
+                        ErrorCategory.INVALID_INPUT,
+                        "The tool request could not be validated.",
+                        remediation="Review the documented tool parameters and try again.",
+                    )
+                )
+            return _error_result(
+                ToolboxError(
+                    ErrorCategory.INTERNAL_ERROR,
+                    "The tool could not complete the requested operation.",
+                    remediation="Retry with a narrower request or review the server audit log.",
+                )
+            )
+
+
+def _error_result(error: ToolboxError) -> CallToolResult:
+    """Return a safe MCP error with both text and structured representations."""
+
+    payload = error.to_response().model_dump(mode="json")
+    return CallToolResult(
+        content=[TextContent(type="text", text=json.dumps(payload, separators=(",", ":")))],
+        structured_content=payload,
+        is_error=True,
+    )
+
+
+def _nested_toolbox_error(error: BaseException) -> ToolboxError | None:
+    """Return an expected tool error preserved as a chained SDK ToolError cause."""
+
+    current: BaseException | None = error
+    while current is not None:
+        if isinstance(current, ToolboxError):
+            return current
+        current = current.__cause__
+    return None
+
+
+def _has_validation_error(error: BaseException) -> bool:
+    """Check chained SDK errors without exposing their validation details."""
+
+    current: BaseException | None = error
+    while current is not None:
+        if isinstance(current, ValidationError):
+            return True
+        current = current.__cause__
+    return False
+
+
 def create_server(runtime: ServerRuntime) -> MCPServer:
     """Create a stdio-ready MCP server after startup policy validation."""
 
-    server = MCPServer(
+    server = ToolboxMCPServer(
         name="Local MCP Toolbox",
         title="Local MCP Toolbox",
         description="Secure, local-first, read-only environment inspection for MCP clients.",

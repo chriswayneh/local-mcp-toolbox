@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
+from hashlib import sha256
 from typing import Any
 
 from mcp.server.context import HandlerResult, ServerRequestContext
@@ -34,7 +35,7 @@ class AuditMiddleware:
         permission_decision = "not_applicable"
         try:
             result = await call_next(context)
-            permission_decision = self._permission_decision(context.method)
+            status, category, permission_decision = self._result_outcome(context.method, result)
             return result
         except ToolboxError as error:
             status = "denied" if error.category is ErrorCategory.PERMISSION_DENIED else "error"
@@ -61,6 +62,8 @@ class AuditMiddleware:
                     input_summary=self._input_summary(context.params),
                     result_status=status,
                     duration_ms=timer.elapsed_ms(),
+                    client_identifier=self._client_identifier(context),
+                    records_returned=self._records_returned(result) if "result" in locals() else 0,
                     error_category=category,
                     permission_decision=permission_decision,
                 )
@@ -78,10 +81,92 @@ class AuditMiddleware:
     def _input_summary(params: Mapping[str, Any] | None) -> dict[str, Any]:
         if not params:
             return {}
-        return dict(params)
+
+        arguments = params.get("arguments")
+        summary: dict[str, Any] = {
+            "parameter_names": sorted(str(name) for name in params if name != "_meta")[:20],
+            "argument_count": len(arguments) if isinstance(arguments, Mapping) else 0,
+        }
+        if isinstance(arguments, Mapping):
+            summary["arguments"] = {
+                str(name): AuditMiddleware._value_summary(str(name), value)
+                for name, value in list(arguments.items())[:20]
+            }
+        return summary
+
+    @staticmethod
+    def _value_summary(name: str, value: Any) -> dict[str, Any]:
+        result: dict[str, Any] = {"type": type(value).__name__}
+        if isinstance(value, str):
+            result["length"] = len(value)
+            if any(token in name.lower() for token in ("path", "file", "root", "repository")):
+                result["fingerprint"] = sha256(value.encode("utf-8")).hexdigest()[:16]
+        elif isinstance(value, Mapping) or isinstance(value, (list, tuple, set)):
+            result["length"] = len(value)
+        return result
 
     @staticmethod
     def _permission_decision(method: str) -> str:
         if method in {"tools/call", "resources/read", "prompts/get"}:
             return "allowed"
         return "not_applicable"
+
+    @classmethod
+    def _result_outcome(
+        cls, method: str, result: HandlerResult
+    ) -> tuple[str, ErrorCategory | None, str]:
+        if not cls._result_value(result, "is_error", "isError"):
+            return "success", None, cls._permission_decision(method)
+
+        structured = cls._result_value(result, "structured_content", "structuredContent")
+        category_value = structured.get("category") if isinstance(structured, Mapping) else None
+        try:
+            category = (
+                ErrorCategory(category_value) if category_value else ErrorCategory.INTERNAL_ERROR
+            )
+        except ValueError:
+            category = ErrorCategory.INTERNAL_ERROR
+        status = "denied" if category is ErrorCategory.PERMISSION_DENIED else "error"
+        decision = "denied" if status == "denied" else "error"
+        return status, category, decision
+
+    @staticmethod
+    def _records_returned(result: HandlerResult) -> int:
+        structured = AuditMiddleware._result_value(
+            result, "structured_content", "structuredContent"
+        )
+        if not isinstance(structured, Mapping):
+            return 0
+        data = structured.get("data")
+        if not isinstance(data, Mapping):
+            return 0
+        for name in (
+            "entries",
+            "records",
+            "findings",
+            "matches",
+            "commits",
+            "containers",
+            "events",
+        ):
+            value = data.get(name)
+            if isinstance(value, list):
+                return len(value)
+        return 0
+
+    @staticmethod
+    def _result_value(result: HandlerResult, attribute: str, alias: str) -> Any:
+        if isinstance(result, Mapping):
+            return result.get(attribute, result.get(alias))
+        return getattr(result, attribute, None)
+
+    @staticmethod
+    def _client_identifier(context: ServerRequestContext[Any, Any]) -> str | None:
+        client_params = context.session.client_params
+        client_info = getattr(client_params, "client_info", None)
+        name = getattr(client_info, "name", None)
+        version = getattr(client_info, "version", None)
+        if not isinstance(name, str):
+            return None
+        identifier = f"{name}/{version}" if isinstance(version, str) else name
+        return identifier[:200]

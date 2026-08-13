@@ -26,7 +26,7 @@ def build_runtime(settings: ToolboxSettings) -> ServerRuntime:
 
     permissions = PermissionService(settings)
     redactor = Redactor(settings.redaction)
-    audit = JsonlAuditLogger(settings.audit.path, redactor)
+    audit = JsonlAuditLogger(settings.audit.path, redactor, settings.audit.retention_days)
     return ServerRuntime(settings, permissions, redactor, audit)
 
 
