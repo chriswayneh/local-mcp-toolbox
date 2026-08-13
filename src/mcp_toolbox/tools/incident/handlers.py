@@ -128,7 +128,9 @@ def _trailing_lines(
             remediation="Configure a smaller log file or collect a narrower log slice.",
         )
     try:
-        all_lines = log_file.read_text(encoding="utf-8", errors="replace").splitlines()
+        all_lines = runtime.redactor.redact(
+            log_file.read_text(encoding="utf-8", errors="replace")
+        ).text.splitlines()
     except OSError as error:
         raise ToolboxError(
             ErrorCategory.RESOURCE_NOT_FOUND,

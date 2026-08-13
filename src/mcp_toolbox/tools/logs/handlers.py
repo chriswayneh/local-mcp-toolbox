@@ -42,7 +42,7 @@ def register_log_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[str, 
 
         line_limit = require_bounded_limit(runtime, lines)
         log_file = _require_log_file(runtime, path)
-        content = _read_log_file(runtime, log_file)
+        content = runtime.redactor.redact(_read_log_file(runtime, log_file)).text
         tail = content.splitlines()[-line_limit:]
         return bounded_response(
             runtime,
@@ -66,7 +66,7 @@ def register_log_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[str, 
         result_limit = require_bounded_limit(runtime, limit)
         needle = _validate_query(query)
         log_file = _require_log_file(runtime, path)
-        source_lines = _read_log_file(runtime, log_file).splitlines()
+        source_lines = runtime.redactor.redact(_read_log_file(runtime, log_file)).text.splitlines()
         comparable_needle = needle if case_sensitive else needle.casefold()
         matches = [
             {"line_number": line_number, "text": line}
@@ -100,7 +100,9 @@ def register_log_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[str, 
         line_limit = require_bounded_limit(runtime, lines)
         group_limit = require_bounded_limit(runtime, limit)
         log_file = _require_log_file(runtime, path)
-        source_lines = _read_log_file(runtime, log_file).splitlines()[-line_limit:]
+        source_lines = runtime.redactor.redact(_read_log_file(runtime, log_file)).text.splitlines()[
+            -line_limit:
+        ]
         grouped, severity_counts = _group_severity_lines(runtime, source_lines)
         groups = sorted(
             grouped.values(), key=lambda group: (-group["occurrences"], group["fingerprint"])

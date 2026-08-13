@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from time import perf_counter
+
 from mcp_toolbox.config.settings import RedactionSettings
 from mcp_toolbox.redaction import Redactor
 
@@ -38,3 +40,37 @@ def test_redacts_nested_audit_like_values() -> None:
 
     assert token not in str(redacted)
     assert count == 1
+
+
+def test_redacts_service_credentials_and_authorization_headers() -> None:
+    slack_token = "xoxb-" + "123456789012-123456789012-abcdefghijklmnopqrstuvwx"
+    stripe_key = "sk_live_" + "abcdefghijklmnopqrstuvwx"
+    secrets = {
+        "api_key": ("api_key=generic-api-key-value-12345", "generic-api-key-value-12345"),
+        "gitlab": ("glpat-abcdefghijklmnopqrst", "glpat-abcdefghijklmnopqrst"),
+        "slack": (slack_token, slack_token),
+        "stripe": (stripe_key, stripe_key),
+        "google": ("AIzaSyDUMMYKEYVALUE123456789012345", "AIzaSyDUMMYKEYVALUE123456789012345"),
+        "connection": ("AccountKey=connection-secret-value-12345", "connection-secret-value-12345"),
+        "authorization": (
+            "Authorization: Basic ZGVtbzpzdXBlci1zZWNyZXQ=",
+            "Basic ZGVtbzpzdXBlci1zZWNyZXQ=",
+        ),
+    }
+
+    result = Redactor().redact("\n".join(value for value, _ in secrets.values()))
+
+    for _, secret in secrets.values():
+        assert secret not in result.text
+    assert result.redaction_count == len(secrets)
+
+
+def test_private_key_redaction_is_linear_for_unterminated_input() -> None:
+    malicious = "-----BEGIN PRIVATE KEY-----\n" + ("A" * 895_000)
+    started = perf_counter()
+
+    result = Redactor().redact(malicious)
+
+    assert perf_counter() - started < 1.0
+    assert "A" * 100 not in result.text
+    assert "[REDACTED_PRIVATE_KEY]" in result.text
