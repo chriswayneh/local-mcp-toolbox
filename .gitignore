@@ -12,7 +12,7 @@ build/
 .env
 .env.*
 !/.env.example
-audit/
+/audit/
 *.log
 !demo/logs/
 !demo/logs/*.log
