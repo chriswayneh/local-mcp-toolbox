@@ -42,12 +42,14 @@ def register_log_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[str, 
 
         line_limit = require_bounded_limit(runtime, lines)
         log_file = _require_log_file(runtime, path)
-        content = runtime.redactor.redact(_read_log_file(runtime, log_file)).text
+        redacted_content = runtime.redactor.redact(_read_log_file(runtime, log_file))
+        content = redacted_content.text
         tail = content.splitlines()[-line_limit:]
         return bounded_response(
             runtime,
             f"Read {len(tail)} trailing lines from an approved log file.",
             {"file_name": log_file.name, "lines": tail, "total_lines": len(content.splitlines())},
+            prior_redactions=redacted_content.redaction_count,
         )
 
     @server.tool(
@@ -66,7 +68,8 @@ def register_log_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[str, 
         result_limit = require_bounded_limit(runtime, limit)
         needle = _validate_query(query)
         log_file = _require_log_file(runtime, path)
-        source_lines = runtime.redactor.redact(_read_log_file(runtime, log_file)).text.splitlines()
+        redacted_content = runtime.redactor.redact(_read_log_file(runtime, log_file))
+        source_lines = redacted_content.text.splitlines()
         comparable_needle = needle if case_sensitive else needle.casefold()
         matches = [
             {"line_number": line_number, "text": line}
@@ -83,6 +86,7 @@ def register_log_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[str, 
                 "total_matches": len(matches),
                 "truncated_matches": len(matches) > result_limit,
             },
+            prior_redactions=redacted_content.redaction_count,
         )
 
     @server.tool(
@@ -100,9 +104,8 @@ def register_log_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[str, 
         line_limit = require_bounded_limit(runtime, lines)
         group_limit = require_bounded_limit(runtime, limit)
         log_file = _require_log_file(runtime, path)
-        source_lines = runtime.redactor.redact(_read_log_file(runtime, log_file)).text.splitlines()[
-            -line_limit:
-        ]
+        redacted_content = runtime.redactor.redact(_read_log_file(runtime, log_file))
+        source_lines = redacted_content.text.splitlines()[-line_limit:]
         grouped, severity_counts = _group_severity_lines(runtime, source_lines)
         groups = sorted(
             grouped.values(), key=lambda group: (-group["occurrences"], group["fingerprint"])
@@ -119,6 +122,7 @@ def register_log_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[str, 
                 "truncated_groups": len(groups) > group_limit,
                 "confidence": "observed_log_evidence_only",
             },
+            prior_redactions=redacted_content.redaction_count,
         )
 
     return ("logs_tail_file", "logs_search", "logs_error_summary")

@@ -2,8 +2,27 @@ from __future__ import annotations
 
 from time import perf_counter
 
+import pytest
+
 from mcp_toolbox.config.settings import RedactionSettings
 from mcp_toolbox.redaction import Redactor
+
+_REMAINING_SECRET_CASES = (
+    (
+        "aws_secret_access_key = " + "wJalrXUtnFEMI/" + "K7MDENG/bPxRfiCYEXAMPLEKEY",
+        "wJalrXUtnFEMI/" + "K7MDENG/bPxRfiCYEXAMPLEKEY",
+    ),
+    ("APP_SECRET=s3cr3t-value-not-a-password-field", "s3cr3t-value-not-a-password-field"),
+    (
+        "Cookie: session=abc123def456; auth_token=zzzz9999",
+        "session=abc123def456; auth_token=zzzz9999",
+    ),
+    ("Set-Cookie: SESSIONID=9f8e7d6c5b4a3210; HttpOnly", "SESSIONID=9f8e7d6c5b4a3210; HttpOnly"),
+    ("REDIS_URL=redis://default:SuperSecret123@cache.internal:6379/0", "SuperSecret123"),
+    ("amqp://guest:guestpassword@rabbit:5672/", "guestpassword"),
+    ("mssql://sa:P@ssw0rd!@db:1433/app", "P@ssw0rd!"),
+    ("https://admin:hunter2@internal.example.test/api", "hunter2"),
+)
 
 
 def test_redacts_common_secret_formats_without_retaining_values() -> None:
@@ -74,3 +93,26 @@ def test_private_key_redaction_is_linear_for_unterminated_input() -> None:
     assert perf_counter() - started < 1.0
     assert "A" * 100 not in result.text
     assert "[REDACTED_PRIVATE_KEY]" in result.text
+
+
+@pytest.mark.parametrize(("value", "secret"), _REMAINING_SECRET_CASES)
+def test_redacts_remaining_credential_shapes(value: str, secret: str) -> None:
+    result = Redactor().redact(value)
+
+    assert secret not in result.text
+    assert result.redaction_count == 1
+
+
+def test_public_ssh_key_is_not_redacted() -> None:
+    non_secret_values = (
+        "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC7f3 user@host",
+        "INFO worker_count=10 connection established",
+        "https://internal.example.test/api",
+        "feature_flag=enabled",
+    )
+
+    for value in non_secret_values:
+        result = Redactor().redact(value)
+
+        assert result.text == value
+        assert result.redaction_count == 0

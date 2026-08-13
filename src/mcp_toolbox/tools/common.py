@@ -14,6 +14,7 @@ def bounded_response(
     data: dict[str, Any],
     *,
     untrusted_content: bool = True,
+    prior_redactions: int = 0,
 ) -> dict[str, Any]:
     """Redact and bound structured tool data before it reaches the MCP transport."""
 
@@ -22,7 +23,7 @@ def bounded_response(
         summary=summary,
         data=redacted_data,
         metadata=ResponseMetadata(
-            redaction_count=redaction_count,
+            redaction_count=prior_redactions + redaction_count,
             untrusted_content=untrusted_content,
         ),
     )

@@ -49,7 +49,7 @@ def register_incident_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[
 
         line_limit = require_bounded_limit(runtime, lines)
         log_file = _require_incident_log(runtime, path)
-        source_lines, start_line = _trailing_lines(runtime, log_file, line_limit)
+        source_lines, start_line, prior_redactions = _trailing_lines(runtime, log_file, line_limit)
         events = [
             {
                 "line_number": line_number,
@@ -63,6 +63,7 @@ def register_incident_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[
             runtime,
             "Extracted observed incident timeline events; log content is untrusted evidence.",
             {"file_name": log_file.name, "events": events, "total_events": len(events)},
+            prior_redactions=prior_redactions,
         )
 
     @server.tool(
@@ -77,7 +78,7 @@ def register_incident_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[
         line_limit = require_bounded_limit(runtime, lines)
         group_limit = require_bounded_limit(runtime, limit)
         log_file = _require_incident_log(runtime, path)
-        source_lines, start_line = _trailing_lines(runtime, log_file, line_limit)
+        source_lines, start_line, prior_redactions = _trailing_lines(runtime, log_file, line_limit)
         groups, severity_counts = _evidence_groups(runtime, source_lines, start_line)
         ordered_groups = sorted(
             groups.values(), key=lambda group: (-group["occurrences"], group["first_line_number"])
@@ -100,6 +101,7 @@ def register_incident_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[
                 "recommended_next_checks": _recommended_next_checks(high_severity_count),
                 "confidence": "observed_log_evidence_only",
             },
+            prior_redactions=prior_redactions,
         )
 
     return ("incident_extract_timeline", "incident_summarize_evidence")
@@ -119,7 +121,7 @@ def _require_incident_log(runtime: ServerRuntime, requested_path: str) -> Path:
 
 def _trailing_lines(
     runtime: ServerRuntime, log_file: Path, line_limit: int
-) -> tuple[list[str], int]:
+) -> tuple[list[str], int, int]:
     size = log_file.stat().st_size
     if size > runtime.settings.incident.max_file_bytes:
         raise ToolboxError(
@@ -128,9 +130,10 @@ def _trailing_lines(
             remediation="Configure a smaller log file or collect a narrower log slice.",
         )
     try:
-        all_lines = runtime.redactor.redact(
+        redacted_content = runtime.redactor.redact(
             log_file.read_text(encoding="utf-8", errors="replace")
-        ).text.splitlines()
+        )
+        all_lines = redacted_content.text.splitlines()
     except OSError as error:
         raise ToolboxError(
             ErrorCategory.RESOURCE_NOT_FOUND,
@@ -138,7 +141,7 @@ def _trailing_lines(
             remediation="Check that the file still exists and is readable.",
         ) from error
     source_lines = all_lines[-line_limit:]
-    return source_lines, len(all_lines) - len(source_lines) + 1
+    return source_lines, len(all_lines) - len(source_lines) + 1, redacted_content.redaction_count
 
 
 def _evidence_groups(
