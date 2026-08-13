@@ -18,9 +18,9 @@
 
 ## Data protections
 
-Filesystem access resolves the canonical target before checking it against approved canonical roots. Symbolic links that escape those roots are denied. Sensitive filename patterns and maximum file sizes are enforced before content reads.
+Filesystem access resolves the canonical target before checking it against approved canonical roots. Symbolic links and Windows junctions that escape those roots are denied. Sensitive filename patterns—including alternate data streams, trailing-dot aliases, and potential 8.3 aliases—are enforced before directory or file access. Directory traversal and file reads are bounded before results are serialized.
 
-Redaction recognizes credentials, private keys, connection strings, bearer tokens, cookies, and common cloud-token formats. A non-reversible fingerprint may be provided only for correlation. Audit events record tool identity, decision, duration, counts, and redaction count, never original secret values.
+Redaction recognizes PEM private-key blocks, API/service credentials, authorization headers, connection strings, bearer tokens, cookies, and common cloud-token formats. A non-reversible fingerprint may be provided only for correlation. Audit events record sanitized argument shape, client identifier, actual result decision, duration, counts, and redaction count; records are size-bounded and retained only for the configured period.
 
 ## Command and integration policy
 

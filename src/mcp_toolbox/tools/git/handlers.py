@@ -116,7 +116,11 @@ def register_git_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[str, 
             if lines
             else {"head": None, "upstream": None, "ahead": 0, "behind": 0}
         )
-        changes = [_parse_status_line(line) for line in lines[1:] if line]
+        changes = [
+            parsed
+            for line in lines[1:]
+            if line and (parsed := _parse_status_line(line)) is not None
+        ]
         return bounded_response(
             runtime,
             "Collected a read-only Git working tree summary.",
@@ -185,7 +189,9 @@ def register_git_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[str, 
 
         repo = _require_repository(runtime, repository)
         lines = runner.run(repo, ["diff", "--numstat"]).stdout.splitlines()
-        files = [_parse_numstat_line(line) for line in lines if line]
+        files = [
+            parsed for line in lines if line and (parsed := _parse_numstat_line(line)) is not None
+        ]
         return bounded_response(
             runtime,
             "Collected a Git diff summary without diff contents.",
@@ -226,14 +232,28 @@ def _parse_branch(line: str) -> dict[str, Any]:
         head = branch_part if branch_part != "HEAD (no branch)" else None
         if separator:
             upstream, _, tracking = tracking_part.partition(" ")
-            if "ahead " in tracking:
-                ahead = int(tracking.split("ahead ", 1)[1].split("]", 1)[0].split(",", 1)[0])
-            if "behind " in tracking:
-                behind = int(tracking.split("behind ", 1)[1].split("]", 1)[0].split(",", 1)[0])
+            ahead = _tracking_count(tracking, "ahead")
+            behind = _tracking_count(tracking, "behind")
     return {"head": head, "upstream": upstream, "ahead": ahead, "behind": behind}
 
 
-def _parse_status_line(line: str) -> dict[str, str]:
+def _tracking_count(tracking: str, label: str) -> int:
+    """Return a Git tracking count only when its fixed-format token is valid."""
+
+    marker = f"{label} "
+    if marker not in tracking:
+        return 0
+    candidate = (
+        tracking.split(marker, maxsplit=1)[1].split("]", maxsplit=1)[0].split(",", maxsplit=1)[0]
+    )
+    return int(candidate) if candidate.isdecimal() else 0
+
+
+def _parse_status_line(line: str) -> dict[str, str] | None:
+    """Parse one porcelain status line or safely ignore malformed output."""
+
+    if len(line) < 4:
+        return None
     return {"index_status": line[0], "worktree_status": line[1], "path": line[3:]}
 
 
@@ -257,8 +277,17 @@ def _parse_commits(output: str) -> list[dict[str, str]]:
     return commits
 
 
-def _parse_numstat_line(line: str) -> dict[str, str | int | None]:
-    added, deleted, path = line.split("\t", maxsplit=2)
+def _parse_numstat_line(line: str) -> dict[str, str | int | None] | None:
+    """Parse one numstat row or safely ignore malformed output."""
+
+    fields = line.split("\t", maxsplit=2)
+    if len(fields) != 3:
+        return None
+    added, deleted, path = fields
+    if added != "-" and not added.isdecimal():
+        return None
+    if deleted != "-" and not deleted.isdecimal():
+        return None
     return {
         "path": path,
         "added_lines": None if added == "-" else int(added),

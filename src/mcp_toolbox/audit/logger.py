@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import threading
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from time import perf_counter
 from typing import Any
@@ -38,9 +38,12 @@ class AuditEvent(BaseModel):
 class JsonlAuditLogger:
     """Serialize sanitized audit metadata as one JSON object per line."""
 
-    def __init__(self, path: Path, redactor: Redactor) -> None:
+    _MAX_EVENT_BYTES = 8_192
+
+    def __init__(self, path: Path, redactor: Redactor, retention_days: int = 30) -> None:
         self._path = path
         self._redactor = redactor
+        self._retention_days = retention_days
         self._lock = threading.Lock()
 
     @property
@@ -53,15 +56,47 @@ class JsonlAuditLogger:
         safe_payload, new_redactions = self._redactor.redact_value(event.model_dump(mode="json"))
         safe_event = AuditEvent.model_validate(safe_payload)
         safe_event.redaction_count += new_redactions
-        serialized = json.dumps(
-            safe_event.model_dump(mode="json"), separators=(",", ":"), sort_keys=True
-        )
+        serialized = self._serialize_bounded(safe_event)
 
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        with self._lock, self._path.open("a", encoding="utf-8", newline="\n") as audit_file:
-            audit_file.write(serialized)
-            audit_file.write("\n")
+        with self._lock:
+            self._prune_expired()
+            with self._path.open("a", encoding="utf-8", newline="\n") as audit_file:
+                audit_file.write(serialized)
+                audit_file.write("\n")
         return safe_event
+
+    def _serialize_bounded(self, event: AuditEvent) -> str:
+        serialized = json.dumps(
+            event.model_dump(mode="json"), separators=(",", ":"), sort_keys=True
+        )
+        if len(serialized.encode("utf-8")) <= self._MAX_EVENT_BYTES:
+            return serialized
+
+        event.input_summary = {"truncated": True, "reason": "audit_event_size_limit"}
+        return json.dumps(event.model_dump(mode="json"), separators=(",", ":"), sort_keys=True)
+
+    def _prune_expired(self) -> None:
+        if not self._path.exists():
+            return
+        cutoff = datetime.now(UTC) - timedelta(days=self._retention_days)
+        retained: list[str] = []
+        changed = False
+        for line in self._path.read_text(encoding="utf-8").splitlines():
+            try:
+                timestamp = datetime.fromisoformat(json.loads(line)["timestamp"])
+                if timestamp.tzinfo is None:
+                    timestamp = timestamp.replace(tzinfo=UTC)
+            except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+                retained.append(line)
+                continue
+            if timestamp >= cutoff:
+                retained.append(line)
+            else:
+                changed = True
+        if changed:
+            content = "\n".join(retained)
+            self._path.write_text(f"{content}\n" if content else "", encoding="utf-8", newline="\n")
 
 
 class AuditTimer:

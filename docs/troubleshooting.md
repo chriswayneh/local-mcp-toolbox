@@ -32,9 +32,10 @@ startup errors.
 
 - **Codex:** after editing `~/.codex/config.toml`, restart the desktop app or
   extension. Confirm the executable and YAML paths are absolute.
-- **Claude Code:** ensure `LOCAL_MCP_TOOLBOX_EXE` and
-  `LOCAL_MCP_TOOLBOX_CONFIG` are set in the process environment before it
-  reads `.mcp.json`. Reset project approvals if the configuration changed.
+- **Claude Code:** the bundled `.mcp.json` template uses client-side
+  `LOCAL_MCP_TOOLBOX_EXE` and `LOCAL_MCP_TOOLBOX_CONFIG` expansion. Set those
+  variables in the client process or replace the placeholders with absolute
+  paths. Local MCP Toolbox itself does not read policy from environment files.
 - **Claude Desktop:** validate the JSON after merging the server entry; a
   trailing comma prevents startup.
 - **VS Code:** open `.vscode/mcp.json`, use the MCP server list to start or

@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from mcp import Client, ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+from mcp_types import ToolAnnotations
 
 from mcp_toolbox.audit import AuditEvent
 from mcp_toolbox.config.settings import AuditSettings, FilesystemSettings, ToolboxSettings
@@ -98,6 +99,57 @@ def test_startup_rejects_missing_approved_root(tmp_path: Path) -> None:
         build_runtime(settings)
 
     assert raised.value.category is ErrorCategory.CONFIGURATION_ERROR
+
+
+def test_tool_errors_are_structured_and_audited_by_actual_outcome(tmp_path: Path) -> None:
+    audit_path = tmp_path / "audit" / "events.jsonl"
+    root = tmp_path / "approved"
+    root.mkdir()
+    blocked_file = root / ".env"
+    blocked_file.write_text("SECRET=not-for-client", encoding="utf-8")
+    runtime = build_runtime(_settings(audit_path, root))
+    server = create_server(runtime)
+
+    @server.tool(name="test_internal_error", annotations=ToolAnnotations(read_only_hint=True))
+    def test_internal_error() -> dict[str, object]:
+        raise RuntimeError("unexpected internal test failure")
+
+    async def scenario() -> None:
+        async with Client(server) as client:
+            success = await client.call_tool("toolbox_server_status")
+            denied = await client.call_tool(
+                "filesystem_read_text_file", {"path": str(blocked_file)}
+            )
+            internal_error = await client.call_tool("test_internal_error")
+            unknown_tool = await client.call_tool("shell_exec")
+
+            assert success.is_error is False
+            assert denied.is_error is True
+            assert denied.structured_content["category"] == "PERMISSION_DENIED"
+            assert denied.structured_content["remediation"]
+            assert internal_error.is_error is True
+            assert internal_error.structured_content["category"] == "INTERNAL_ERROR"
+            assert unknown_tool.is_error is True
+            assert unknown_tool.structured_content["category"] == "UNSUPPORTED_OPERATION"
+
+    asyncio.run(scenario())
+
+    events = [
+        AuditEvent.model_validate(json.loads(line)) for line in audit_path.read_text().splitlines()
+    ]
+    by_tool_name = {event.tool_name: event for event in events}
+    assert by_tool_name["toolbox_server_status"].result_status == "success"
+    assert by_tool_name["toolbox_server_status"].permission_decision == "allowed"
+    assert by_tool_name["filesystem_read_text_file"].result_status == "denied"
+    assert by_tool_name["filesystem_read_text_file"].permission_decision == "denied"
+    assert (
+        by_tool_name["filesystem_read_text_file"].error_category is ErrorCategory.PERMISSION_DENIED
+    )
+    assert by_tool_name["test_internal_error"].result_status == "error"
+    assert by_tool_name["test_internal_error"].error_category is ErrorCategory.INTERNAL_ERROR
+    assert by_tool_name["shell_exec"].result_status == "error"
+    assert by_tool_name["shell_exec"].permission_decision == "error"
+    assert by_tool_name["shell_exec"].error_category is ErrorCategory.UNSUPPORTED_OPERATION
 
 
 def test_stdio_transport_serves_the_registered_status_tool(tmp_path: Path) -> None:

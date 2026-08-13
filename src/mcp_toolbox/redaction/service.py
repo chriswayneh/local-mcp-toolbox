@@ -31,17 +31,16 @@ class Redactor:
 
     _BASE_RULES = (
         _Rule(
-            "PRIVATE_KEY",
-            re.compile(
-                r"(?P<secret>-----BEGIN(?: [A-Z]+)? PRIVATE KEY-----.*?"
-                r"-----END(?: [A-Z]+)? PRIVATE KEY-----)",
-                re.DOTALL,
-            ),
-        ),
-        _Rule(
             "GITHUB_TOKEN",
             re.compile(r"(?P<secret>gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})"),
         ),
+        _Rule("GITLAB_TOKEN", re.compile(r"(?P<secret>glpat-[A-Za-z0-9_-]{20,})")),
+        _Rule(
+            "SLACK_TOKEN",
+            re.compile(r"(?P<secret>xox[baprs]-[A-Za-z0-9-]{20,})"),
+        ),
+        _Rule("STRIPE_KEY", re.compile(r"(?P<secret>sk_(?:live|test)_[A-Za-z0-9]{16,})")),
+        _Rule("GOOGLE_API_KEY", re.compile(r"(?P<secret>AIza[A-Za-z0-9_-]{20,})")),
         _Rule("AWS_ACCESS_KEY", re.compile(r"(?P<secret>AKIA[0-9A-Z]{16})")),
         _Rule(
             "JWT",
@@ -61,7 +60,29 @@ class Redactor:
                 r"(?i)(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?)://[^\s:/@]+:(?P<secret>[^\s@]+)@"
             ),
         ),
+        _Rule(
+            "CONNECTION_SECRET",
+            re.compile(
+                r"(?i)(?:accountkey|sharedaccesskey|clientsecret|client_secret)\s*=\s*"
+                r"['\"]?(?P<secret>[^\s;'\"]{8,})"
+            ),
+        ),
+        _Rule(
+            "API_KEY",
+            re.compile(
+                r"(?i)(?:api[-_]?key|service[-_]?token|access[-_]?token|token)\s*[:=]\s*"
+                r"['\"]?(?P<secret>[A-Za-z0-9._~+/=-]{12,})"
+            ),
+        ),
+        _Rule(
+            "AUTHORIZATION_HEADER",
+            re.compile(
+                r"(?im)(?:authorization|proxy-authorization)\s*:\s*(?P<secret>[^\r\n]{1,2048})"
+            ),
+        ),
     )
+    _PRIVATE_KEY_BEGIN = re.compile(r"-----BEGIN(?: [A-Z0-9]+)* PRIVATE KEY-----")
+    _PRIVATE_KEY_END = re.compile(r"-----END(?: [A-Z0-9]+)* PRIVATE KEY-----")
     _EMAIL_RULE = _Rule(
         "EMAIL", re.compile(r"(?P<secret>\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b)")
     )
@@ -85,9 +106,7 @@ class Redactor:
     def redact(self, value: str) -> RedactionResult:
         """Redact all supported values, preserving only safe category labels."""
 
-        fingerprints: list[str] = []
-        count = 0
-        redacted = value
+        redacted, count, fingerprints = self._redact_private_keys(value)
 
         for rule in self._rules:
 
@@ -101,6 +120,25 @@ class Redactor:
             redacted = rule.pattern.sub(replace, redacted)
 
         return RedactionResult(redacted, count, tuple(dict.fromkeys(fingerprints)))
+
+    def _redact_private_keys(self, value: str) -> tuple[str, int, list[str]]:
+        """Redact PEM blocks with bounded linear scans, including unterminated blocks."""
+
+        cursor = 0
+        pieces: list[str] = []
+        fingerprints: list[str] = []
+        count = 0
+        while begin := self._PRIVATE_KEY_BEGIN.search(value, cursor):
+            pieces.append(value[cursor : begin.start()])
+            end = self._PRIVATE_KEY_END.search(value, begin.end())
+            secret_end = end.end() if end is not None else len(value)
+            secret = value[begin.start() : secret_end]
+            fingerprints.append(self.fingerprint(secret))
+            pieces.append("[REDACTED_PRIVATE_KEY]" + ("\n" * secret.count("\n")))
+            count += 1
+            cursor = secret_end
+        pieces.append(value[cursor:])
+        return "".join(pieces), count, fingerprints
 
     def redact_value(self, value: Any) -> tuple[Any, int]:
         """Recursively redact strings in data retained for responses or audits."""

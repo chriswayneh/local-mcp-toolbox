@@ -14,7 +14,7 @@ All current tools are read-only. Every returned response uses the common envelop
 
 | Tool | Inputs | Output | Safety controls |
 | --- | --- | --- | --- |
-| `filesystem_list_directory` | Absolute `path`, optional `limit`, optional `offset` | Immediate entry names, types, sizes, timestamps, and pagination metadata | Path resolves canonically inside an approved root; directory listing is bounded by configured limits. |
+| `filesystem_list_directory` | Absolute `path`, optional `limit`, optional `offset` | Immediate policy-approved entry names, types, sizes, timestamps, and bounded-prefix metadata | Path resolves canonically inside an approved root; sensitive names and inaccessible entries are omitted, and traversal stops at `max_directory_entries` before sorting. |
 | `filesystem_file_metadata` | Absolute `path` | Filename, type, size, and modification timestamp | Requires an approved root, extension allowlist, and sensitive-file blocklist check. |
 | `filesystem_read_text_file` | Absolute `path` | UTF-8 text (replacement decoding), size, and redaction metadata | Requires all metadata checks, maximum file size, global result bound, and central secret redaction. |
 
@@ -31,11 +31,11 @@ filesystem:
     - C:\\absolute\\path\\to\\approved-project
   allowed_extensions: [".md", ".txt", ".json", ".yaml", ".yml", ".toml", ".py", ".ts"]
   blocked_patterns: [".env", ".env.*", "id_rsa", "id_ed25519", "*.pem", "*.key", "credentials*"]
-  max_file_bytes: 1048576
+  max_file_bytes: 240000
   max_directory_entries: 500
 ```
 
-The `restricted` default includes no approved roots, so filesystem requests are denied until the operator configures one deliberately.
+The `restricted` default includes no approved roots, so filesystem requests are denied until the operator configures one deliberately. The 240,000-byte default remains below the 262,144-byte response cap so ordinary oversized files receive the documented maximum-file error before response serialization.
 
 ## Git
 
