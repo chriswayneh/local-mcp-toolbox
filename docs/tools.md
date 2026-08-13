@@ -103,3 +103,43 @@ logs:
 ```
 
 Log output is untrusted data and is redacted before it reaches the client or audit storage. The module has no write, rotation, deletion, or generic command capability.
+
+## Security scanners
+
+| Tool | Inputs | Output | Safety controls |
+| --- | --- | --- | --- |
+| `security_scanner_inventory` | None | Availability of a fixed scanner allowlist | Resolves availability only; it does not execute a scanner or disclose executable paths. |
+| `security_scan_repository` | Absolute approved `repository`, optional bounded `limit`, scanner fixed to `bandit` | Normalized Bandit findings without source-code excerpts | Requires explicit opt-in and a separate approved root. Uses only `bandit -q -r <root> -f json` without a shell, timeout/output limits, and central redaction. |
+
+Enable the adapter only for the smallest scan root set:
+
+```yaml
+profile: standard
+integrations:
+  security_scanners: true
+security:
+  approved_roots:
+    - C:\\absolute\\path\\to\\approved-project
+```
+
+The current Version 1 adapter supports Bandit only. Inventory can report other local scanner availability, but no unlisted scanner can be invoked, no user-controlled scanner arguments are accepted, and no remediation or fix operation is registered.
+
+## Infrastructure
+
+| Tool | Inputs | Output | Safety controls |
+| --- | --- | --- | --- |
+| `infra_detect_project_types` | Absolute approved `project` | Detected project types from recognized top-level marker names | Requires explicit infrastructure opt-in and a separate approved root; reads directory-entry names only. |
+| `infra_configuration_inventory` | Absolute approved `project`, optional bounded `limit` | Recognized top-level configuration names and categories | Does not read configuration contents, traverse recursively, or follow project references. |
+
+Enable top-level infrastructure metadata only for approved project roots:
+
+```yaml
+profile: standard
+integrations:
+  infrastructure: true
+infrastructure:
+  approved_roots:
+    - C:\\absolute\\path\\to\\approved-project
+```
+
+The current inventory recognizes common Docker, project-language, Terraform, Helm/Kustomize, Ansible, and GitHub Actions markers. It deliberately returns metadata only; deeper parsing and dependency analysis remain future work.

@@ -42,7 +42,8 @@ The current MCP surface combines server-generated metadata with narrow read-only
 
 - `toolbox_server_status` — read-only server metadata; it never inspects the host.
 - System and approved-root filesystem inspection tools.
-- Exact-allowlist Git inspection, opt-in Docker inspection, and dedicated approved-root log inspection.
+- Exact-allowlist Git inspection, opt-in Docker inspection, dedicated approved-root log inspection,
+  fixed-command Bandit scanning, and top-level infrastructure metadata inventory.
 - `toolbox://server/status`, `toolbox://configuration/summary`, `toolbox://security/policy`, and `toolbox://modules` resources.
 - `analyze_repository`, `summarize_recent_errors`, `troubleshoot_container`, and `perform_security_review` safe prompt templates.
 

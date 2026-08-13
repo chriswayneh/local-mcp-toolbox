@@ -16,7 +16,9 @@ from mcp_toolbox.server.runtime import ServerRuntime
 from mcp_toolbox.tools.docker import register_docker_tools
 from mcp_toolbox.tools.filesystem import register_filesystem_tools
 from mcp_toolbox.tools.git import register_git_tools
+from mcp_toolbox.tools.infrastructure import register_infrastructure_tools
 from mcp_toolbox.tools.logs import register_log_tools
+from mcp_toolbox.tools.security import register_security_tools
 from mcp_toolbox.tools.system import register_system_tools
 
 _RESOURCE_URIS = (
@@ -57,6 +59,8 @@ def create_server(runtime: ServerRuntime) -> MCPServer:
             register_git_tools(server, runtime),
             register_docker_tools(server, runtime),
             register_log_tools(server, runtime),
+            register_security_tools(server, runtime),
+            register_infrastructure_tools(server, runtime),
         )
         for tool_name in tools
     )
@@ -200,13 +204,15 @@ def _module_inventory(
         registered_modules.append("docker")
     if any(tool_name.startswith("logs_") for tool_name in registered_tool_names):
         registered_modules.append("logs")
+    if any(tool_name.startswith("security_") for tool_name in registered_tool_names):
+        registered_modules.append("security")
+    if any(tool_name.startswith("infra_") for tool_name in registered_tool_names):
+        registered_modules.append("infrastructure")
     return {
         "registered": registered_modules,
         "registered_tools": list(registered_tool_names),
         "configured_integrations": sorted(runtime.settings.integrations.enabled_names()),
         "planned_version_one": [
-            "security",
-            "infrastructure",
             "incident",
         ],
     }

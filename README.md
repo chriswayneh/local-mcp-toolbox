@@ -6,7 +6,7 @@
 
 This repository has completed **Phase 3 — MCP Server** and is progressing through **Phase 4 — Version 1 Tools**. The server runs over stdio with startup policy validation, audited protocol requests, safe metadata resources, reusable safety prompts, and narrowly scoped read-only inspection tools.
 
-The Version 1 inspection modules now include safe system metadata, approved-root filesystem inspection, explicit-allowlist Git inspection, opt-in Docker metadata, health, and bounded-log inspection, plus dedicated approved-root log analysis. Security scanners, infrastructure inventory, and incident tooling remain in progress.
+The Version 1 inspection modules now include safe system metadata, approved-root filesystem inspection, explicit-allowlist Git inspection, opt-in Docker metadata, health, and bounded-log inspection, dedicated approved-root log analysis, a fixed-command Bandit adapter, and top-level infrastructure detection. Incident tooling remains in progress.
 
 ### Implemented foundation
 
@@ -21,6 +21,8 @@ The Version 1 inspection modules now include safe system metadata, approved-root
 - Read-only Git status, branch, recent-commit, and diff-summary inspection using fixed argument templates
 - Opt-in Docker container metadata, health, and bounded recent-log inspection through the official SDK
 - Dedicated approved-root log tails, literal search, and deterministic error grouping with redaction
+- Security-scanner availability inventory and normalized Bandit findings from separate approved roots
+- Top-level project-type detection and infrastructure configuration inventory from separate approved roots
 
 ## Why this project exists
 
@@ -117,6 +119,8 @@ See [getting started](docs/getting-started.md) for a generic stdio client config
 | Git | `git_repository_status`, `git_current_branch`, `git_recent_commits`, `git_diff_summary` | Explicit integration plus exact repository allowlist; fixed non-interactive Git arguments, no shell, time/output bounds, and redaction. |
 | Docker | `docker_list_containers`, `docker_container_details`, `docker_container_logs`, `docker_unhealthy_containers` | Explicit opt-in; official SDK only; no lifecycle, exec, image, network, volume, label, mount, environment, or command access; bounded output and redaction. |
 | Logs | `logs_tail_file`, `logs_search`, `logs_error_summary` | Separate explicit log roots; extension/blocklist checks, bounded files/records, literal-only search, secret redaction, and evidence-only summaries. |
+| Security | `security_scanner_inventory`, `security_scan_repository` | Explicit scanner opt-in and separate roots; a fixed `bandit -q -r <approved-root> -f json` template, no shell, timeout/output bounds, normalized/redacted findings, and no automatic fixes. |
+| Infrastructure | `infra_detect_project_types`, `infra_configuration_inventory` | Explicit separate roots; marker names and top-level configuration names only—no file-content reads or recursive traversal. |
 
 See [tool catalog](docs/tools.md) for parameters and output behavior.
 

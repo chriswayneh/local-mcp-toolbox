@@ -32,7 +32,9 @@
 - [x] Approved-repository, read-only Git inspection
 - [x] Opt-in Docker metadata, health, and bounded-log inspection
 - [x] Dedicated approved-root log tails, search, and deterministic error summaries
-- [ ] Security scanners, infrastructure, and incident modules
+- [x] Security-scanner inventory and fixed-command Bandit adapter with normalized findings
+- [x] Top-level infrastructure project detection and configuration inventory
+- [ ] Incident evidence summaries and correlation
 
 ## Phase 5 — CLI and Docker Deployment
 

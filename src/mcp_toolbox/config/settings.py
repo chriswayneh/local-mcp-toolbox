@@ -56,6 +56,8 @@ class IntegrationSettings(BaseModel):
     docker: bool = False
     git: bool = False
     logs: bool = False
+    security_scanners: bool = False
+    infrastructure: bool = False
     github: bool = False
     kubernetes: bool = False
     external_network: bool = False
@@ -80,6 +82,14 @@ class LogSettings(FilesystemSettings):
         default_factory=lambda: frozenset({".jsonl", ".log", ".out", ".txt"})
     )
     max_file_bytes: int = Field(default=5_242_880, ge=1, le=100 * 1_048_576)
+
+
+class SecuritySettings(FilesystemSettings):
+    """Explicit approved roots for external read-only scanner invocation."""
+
+
+class InfrastructureSettings(FilesystemSettings):
+    """Explicit approved roots for top-level infrastructure metadata inventory."""
 
 
 class LimitSettings(BaseModel):
@@ -121,6 +131,8 @@ class ToolboxSettings(BaseModel):
     integrations: IntegrationSettings = Field(default_factory=IntegrationSettings)
     git: GitSettings = Field(default_factory=GitSettings)
     logs: LogSettings = Field(default_factory=LogSettings)
+    security: SecuritySettings = Field(default_factory=SecuritySettings)
+    infrastructure: InfrastructureSettings = Field(default_factory=InfrastructureSettings)
     limits: LimitSettings = Field(default_factory=LimitSettings)
     audit: AuditSettings = Field(default_factory=AuditSettings)
     redaction: RedactionSettings = Field(default_factory=RedactionSettings)
