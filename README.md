@@ -6,7 +6,7 @@
 
 This repository has completed **Phase 3 — MCP Server**. The server now runs over stdio with startup policy validation, audited protocol requests, safe metadata resources, reusable safety prompts, and one read-only server-status tool. Environment-inspection modules arrive in the next phase.
 
-The first Version 1 inspection increment is now available: safe system metadata and approved-root filesystem inspection. Git, Docker, logs, security scanners, infrastructure inventory, and incident tooling remain in progress.
+The Version 1 inspection modules now include safe system metadata, approved-root filesystem inspection, and explicit-allowlist Git inspection. Docker, logs, security scanners, infrastructure inventory, and incident tooling remain in progress.
 
 ### Implemented foundation
 
@@ -18,6 +18,7 @@ The first Version 1 inspection increment is now available: safe system metadata 
 - Unit and adversarial regressions for configuration, path traversal, sensitive paths, extension restrictions, integration denial, redaction, and audit leakage
 - MCP stdio transport with a subprocess integration test, safe MCP resources/prompts, and audited protocol requests
 - Read-only system metadata and approved-root filesystem listing, metadata, and redacted text reads
+- Read-only Git status, branch, recent-commit, and diff-summary inspection using fixed argument templates
 
 ## Why this project exists
 
@@ -111,6 +112,7 @@ See [getting started](docs/getting-started.md) for a generic stdio client config
 | Server | `toolbox_server_status` | Server-generated metadata only. |
 | System | `system_info`, `disk_usage`, `installed_developer_tools` | Standard-library metadata only; no environment-variable or process command-line exposure. |
 | Filesystem | `filesystem_list_directory`, `filesystem_file_metadata`, `filesystem_read_text_file` | Canonical approved-root containment, sensitive-file blocklist, extension allowlist, file/result limits, and redaction. |
+| Git | `git_repository_status`, `git_current_branch`, `git_recent_commits`, `git_diff_summary` | Explicit integration plus exact repository allowlist; fixed non-interactive Git arguments, no shell, time/output bounds, and redaction. |
 
 See [tool catalog](docs/tools.md) for parameters and output behavior.
 

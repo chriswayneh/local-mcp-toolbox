@@ -64,6 +64,14 @@ class IntegrationSettings(BaseModel):
         return frozenset(name for name, enabled in self.model_dump().items() if enabled)
 
 
+class GitSettings(BaseModel):
+    """Explicit repository allowlist for the read-only Git module."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    approved_repositories: list[Path] = Field(default_factory=list)
+
+
 class LimitSettings(BaseModel):
     """Global resource limits applied before results reach the MCP client."""
 
@@ -101,6 +109,7 @@ class ToolboxSettings(BaseModel):
     profile: PermissionProfile = PermissionProfile.RESTRICTED
     filesystem: FilesystemSettings = Field(default_factory=FilesystemSettings)
     integrations: IntegrationSettings = Field(default_factory=IntegrationSettings)
+    git: GitSettings = Field(default_factory=GitSettings)
     limits: LimitSettings = Field(default_factory=LimitSettings)
     audit: AuditSettings = Field(default_factory=AuditSettings)
     redaction: RedactionSettings = Field(default_factory=RedactionSettings)

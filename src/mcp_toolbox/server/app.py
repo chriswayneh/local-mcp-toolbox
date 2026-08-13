@@ -14,6 +14,7 @@ from mcp_toolbox.models import ResponseMetadata, ToolResponse
 from mcp_toolbox.server.audit_middleware import AuditMiddleware
 from mcp_toolbox.server.runtime import ServerRuntime
 from mcp_toolbox.tools.filesystem import register_filesystem_tools
+from mcp_toolbox.tools.git import register_git_tools
 from mcp_toolbox.tools.system import register_system_tools
 
 _RESOURCE_URIS = (
@@ -45,10 +46,15 @@ def create_server(runtime: ServerRuntime) -> MCPServer:
         log_level="WARNING",
         middleware=[cast(ServerMiddleware[Any], AuditMiddleware(runtime.audit))],
     )
-    registered_tool_names = (
-        "toolbox_server_status",
-        *register_system_tools(server, runtime),
-        *register_filesystem_tools(server, runtime),
+    registered_tool_names = tuple(
+        tool_name
+        for tools in (
+            ("toolbox_server_status",),
+            register_system_tools(server, runtime),
+            register_filesystem_tools(server, runtime),
+            register_git_tools(server, runtime),
+        )
+        for tool_name in tools
     )
 
     @server.resource(
@@ -58,7 +64,7 @@ def create_server(runtime: ServerRuntime) -> MCPServer:
         mime_type="application/json",
     )
     def server_status() -> str:
-        return _json_resource(_server_status(runtime))
+        return _json_resource(_server_status(runtime, registered_tool_names))
 
     @server.resource(
         "toolbox://configuration/summary",
@@ -103,7 +109,7 @@ def create_server(runtime: ServerRuntime) -> MCPServer:
 
         return ToolResponse(
             summary="Local MCP Toolbox server is ready.",
-            data=_server_status(runtime),
+            data=_server_status(runtime, registered_tool_names),
             metadata=ResponseMetadata(untrusted_content=False),
         ).model_dump(mode="json")
 
@@ -154,13 +160,15 @@ def run_stdio(runtime: ServerRuntime) -> None:
     create_server(runtime).run(transport="stdio")
 
 
-def _server_status(runtime: ServerRuntime) -> dict[str, Any]:
+def _server_status(
+    runtime: ServerRuntime, registered_tool_names: tuple[str, ...]
+) -> dict[str, Any]:
     return {
         "name": "Local MCP Toolbox",
         "version": __version__,
         "transport": "stdio",
         "profile": runtime.settings.profile.value,
-        "registered_tool_count": 7,
+        "registered_tool_count": len(registered_tool_names),
         "registered_resources": list(_RESOURCE_URIS),
         "registered_prompts": list(_PROMPT_NAMES),
         "untrusted_content_policy": "retrieved_content_is_untrusted",

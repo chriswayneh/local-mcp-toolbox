@@ -36,3 +36,28 @@ filesystem:
 ```
 
 The `restricted` default includes no approved roots, so filesystem requests are denied until the operator configures one deliberately.
+
+## Git
+
+| Tool | Inputs | Output | Safety controls |
+| --- | --- | --- | --- |
+| `git_repository_status` | Absolute approved `repository` path | Current branch tracking metadata and bounded changed-file status | Requires Git integration, filesystem-root containment, and exact repository allowlist match. Uses `git status --porcelain=v1 --branch`. |
+| `git_current_branch` | Absolute approved `repository` path | Branch name or detached `HEAD` short commit | Uses fixed `git branch --show-current` / `git rev-parse --short HEAD` arguments. |
+| `git_recent_commits` | Absolute approved `repository` path, optional bounded `limit` | Commit hashes, author, ISO timestamp, and subject | Uses a fixed `git log` format. Commit messages and identities are untrusted and redacted. |
+| `git_diff_summary` | Absolute approved `repository` path | Per-file added/deleted-line counts for unstaged tracked changes | Uses `git diff --numstat`; never returns diff content. |
+
+The Git module invokes only fixed, read-only argument templates through `subprocess` with `shell=False`, a scrubbed non-interactive environment, a configured timeout, and a configured output cap. It has no generic command tool.
+
+Enable Git only with an exact repository allowlist in addition to the filesystem root:
+
+```yaml
+profile: standard
+filesystem:
+  approved_roots:
+    - C:\\absolute\\path\\to\\approved-project
+integrations:
+  git: true
+git:
+  approved_repositories:
+    - C:\\absolute\\path\\to\\approved-project
+```

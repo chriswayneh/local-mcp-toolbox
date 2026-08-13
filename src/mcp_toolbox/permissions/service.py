@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from fnmatch import fnmatchcase
 from pathlib import Path
 
-from mcp_toolbox.config.settings import FilesystemSettings, ToolboxSettings
+from mcp_toolbox.config.settings import FilesystemSettings, GitSettings, ToolboxSettings
 from mcp_toolbox.models import ErrorCategory, ToolboxError
 
 
@@ -128,6 +128,7 @@ class PermissionService:
     def __init__(self, settings: ToolboxSettings) -> None:
         self.settings = settings
         self.filesystem = FilesystemAuthorizer(settings.filesystem)
+        self.git = GitRepositoryAuthorizer(settings.git)
 
     def check_integration(self, integration: str) -> PermissionDecision:
         enabled = self.settings.integrations.model_dump().get(integration)
@@ -149,3 +150,57 @@ class PermissionService:
                     "Enable only the required integration in an explicit configuration profile."
                 ),
             )
+
+    def require_git_repository(self, requested_path: Path) -> Path:
+        """Require Git integration plus both filesystem and repository allowlists."""
+
+        self.require_integration("git")
+        repository = self.filesystem.require_directory(requested_path)
+        return self.git.require_repository(repository)
+
+
+class GitRepositoryAuthorizer:
+    """Authorize only exact canonical repositories explicitly approved by the operator."""
+
+    def __init__(self, settings: GitSettings) -> None:
+        self._repositories = tuple(
+            self._resolve_repository(path) for path in settings.approved_repositories
+        )
+
+    @staticmethod
+    def _resolve_repository(path: Path) -> Path:
+        if not path.is_absolute():
+            raise ToolboxError(
+                ErrorCategory.CONFIGURATION_ERROR,
+                "Approved Git repositories must be absolute paths.",
+                remediation=(
+                    "Use an absolute existing repository path in git.approved_repositories."
+                ),
+            )
+        try:
+            resolved = path.resolve(strict=True)
+        except OSError as error:
+            raise ToolboxError(
+                ErrorCategory.CONFIGURATION_ERROR,
+                "An approved Git repository does not exist or cannot be resolved.",
+                remediation="Configure an existing repository directory.",
+            ) from error
+        if not resolved.is_dir():
+            raise ToolboxError(
+                ErrorCategory.CONFIGURATION_ERROR,
+                "Approved Git repositories must be directories.",
+                remediation="Configure a repository directory, not a file.",
+            )
+        return resolved
+
+    def require_repository(self, requested_path: Path) -> Path:
+        """Return a canonical allowlisted repository or raise a safe denial."""
+
+        canonical = requested_path.resolve(strict=False)
+        if canonical not in self._repositories:
+            raise ToolboxError(
+                ErrorCategory.PERMISSION_DENIED,
+                "Git repository access was denied by the active policy.",
+                remediation="Add the exact repository path to git.approved_repositories.",
+            )
+        return canonical
