@@ -4,7 +4,9 @@
 
 ## Status
 
-This repository has completed **Phase 3 — MCP Server**. The server now runs over stdio with startup policy validation, audited protocol requests, safe metadata resources, reusable safety prompts, and one read-only server-status tool. Environment-inspection modules arrive in the next phase.
+This repository has completed **Phase 3 — MCP Server** and is progressing through **Phase 4 — Version 1 Tools**. The server runs over stdio with startup policy validation, audited protocol requests, safe metadata resources, reusable safety prompts, and narrowly scoped read-only inspection tools.
+
+The Version 1 inspection modules now include safe system metadata, approved-root filesystem inspection, explicit-allowlist Git inspection, opt-in Docker metadata, health, and bounded-log inspection, dedicated approved-root log analysis, a fixed-command Bandit adapter, and top-level infrastructure detection. Incident tooling remains in progress.
 
 ### Implemented foundation
 
@@ -15,6 +17,12 @@ This repository has completed **Phase 3 — MCP Server**. The server now runs ov
 - Sanitized append-only JSONL audit events with request metadata, timing, permission decision, and redaction count
 - Unit and adversarial regressions for configuration, path traversal, sensitive paths, extension restrictions, integration denial, redaction, and audit leakage
 - MCP stdio transport with a subprocess integration test, safe MCP resources/prompts, and audited protocol requests
+- Read-only system metadata and approved-root filesystem listing, metadata, and redacted text reads
+- Read-only Git status, branch, recent-commit, and diff-summary inspection using fixed argument templates
+- Opt-in Docker container metadata, health, and bounded recent-log inspection through the official SDK
+- Dedicated approved-root log tails, literal search, and deterministic error grouping with redaction
+- Security-scanner availability inventory and normalized Bandit findings from separate approved roots
+- Top-level project-type detection and infrastructure configuration inventory from separate approved roots
 
 ## Why this project exists
 
@@ -91,15 +99,30 @@ demo/            Explicitly non-production test fixtures
 
 ## Quick start
 
-Python 3.12+ is required. The current server deliberately starts with the restrictive profile and exposes only safe server metadata until Version 1 tool modules are implemented.
+Python 3.12+ is required. The restrictive profile starts with server metadata and safe system inspection only; filesystem access needs explicit roots, and Docker, Git, logs, scanners, and infrastructure modules need their own explicit opt-in configuration.
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python -m pip install -e ".[dev]"
+.\.venv\Scripts\python -m pip install -e ".[dev,docker]"
 .\.venv\Scripts\local-mcp-toolbox serve --config config\restricted.yml
 ```
 
 See [getting started](docs/getting-started.md) for a generic stdio client configuration.
+
+## Current tool catalog
+
+| Module | Tools | Guardrails |
+| --- | --- | --- |
+| Server | `toolbox_server_status` | Server-generated metadata only. |
+| System | `system_info`, `disk_usage`, `installed_developer_tools` | Standard-library metadata only; no environment-variable or process command-line exposure. |
+| Filesystem | `filesystem_list_directory`, `filesystem_file_metadata`, `filesystem_read_text_file` | Canonical approved-root containment, sensitive-file blocklist, extension allowlist, file/result limits, and redaction. |
+| Git | `git_repository_status`, `git_current_branch`, `git_recent_commits`, `git_diff_summary` | Explicit integration plus exact repository allowlist; fixed non-interactive Git arguments, no shell, time/output bounds, and redaction. |
+| Docker | `docker_list_containers`, `docker_container_details`, `docker_container_logs`, `docker_unhealthy_containers` | Explicit opt-in; official SDK only; no lifecycle, exec, image, network, volume, label, mount, environment, or command access; bounded output and redaction. |
+| Logs | `logs_tail_file`, `logs_search`, `logs_error_summary` | Separate explicit log roots; extension/blocklist checks, bounded files/records, literal-only search, secret redaction, and evidence-only summaries. |
+| Security | `security_scanner_inventory`, `security_scan_repository` | Explicit scanner opt-in and separate roots; a fixed `bandit -q -r <approved-root> -f json` template, no shell, timeout/output bounds, normalized/redacted findings, and no automatic fixes. |
+| Infrastructure | `infra_detect_project_types`, `infra_configuration_inventory` | Explicit separate roots; marker names and top-level configuration names only—no file-content reads or recursive traversal. |
+
+See [tool catalog](docs/tools.md) for parameters and output behavior.
 
 ## Documentation
 
@@ -108,6 +131,7 @@ See [getting started](docs/getting-started.md) for a generic stdio client config
 - [Threat model](docs/threat-model.md)
 - [Permissions](docs/permissions.md)
 - [Getting started](docs/getting-started.md)
+- [Tool catalog](docs/tools.md)
 - [Roadmap](ROADMAP.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security reporting](SECURITY.md)

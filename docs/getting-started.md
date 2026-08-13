@@ -6,7 +6,7 @@ Create a local virtual environment, install the project, and start the default r
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python -m pip install -e ".[dev]"
+.\.venv\Scripts\python -m pip install -e ".[dev,docker]"
 .\.venv\Scripts\local-mcp-toolbox serve --config config\restricted.yml
 ```
 
@@ -31,4 +31,31 @@ Start with `restricted.yml`. To inspect an approved project later, copy `config/
 
 ## Current capabilities
 
-Phase 3 registers server-generated metadata resources, safety prompts, and the read-only `toolbox_server_status` tool. It does not yet inspect the local filesystem, Git, Docker, logs, or Kubernetes. Those collection modules are the next implementation phase.
+The server exposes server metadata plus read-only system, approved-root filesystem, exact-allowlist Git, opt-in Docker inspection, and opt-in dedicated log-file inspection. Kubernetes, GitHub, and all mutating capabilities are not registered.
+
+## Enable Docker inspection deliberately
+
+Install the Docker extra and configure a standard profile with the integration enabled:
+
+```yaml
+profile: standard
+integrations:
+  docker: true
+```
+
+Docker tools use the local Docker API only for container listing, selected metadata, health status, and bounded log reads. They do not register lifecycle, exec, image, network, volume, label, mount, environment, or command-inspection operations. A Docker socket is a high-privilege host boundary; do not mount or expose one to an untrusted process, and use the smallest local Docker access necessary.
+
+## Enable log-file inspection deliberately
+
+Logs use independent approved roots, so observing an application log does not broaden the general filesystem module:
+
+```yaml
+profile: standard
+integrations:
+  logs: true
+logs:
+  approved_roots:
+    - C:\\absolute\\path\\to\\application-logs
+```
+
+Log searches are literal strings only—user-provided regular expressions are never executed. Responses are bounded and redacted, and error summaries report observed lines and groups rather than asserting a root cause.

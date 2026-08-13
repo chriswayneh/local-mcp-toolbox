@@ -10,10 +10,34 @@ filesystem:
 integrations:
   docker: true
   git: true
+  logs: false
+  security_scanners: false
+  infrastructure: false
   github: false
   kubernetes: false
   external_network: false
   external_ai: false
+git:
+  approved_repositories:
+    - /absolute/path/to/approved/project
+logs:
+  approved_roots: []
+  allowed_extensions: [".log", ".txt", ".jsonl", ".out"]
+  blocked_patterns: [".env", ".env.*", "*.pem", "*.key", "credentials*"]
+  max_file_bytes: 5242880
+  max_directory_entries: 500
+security:
+  approved_roots: []
+  allowed_extensions: []
+  blocked_patterns: [".env", ".env.*", "*.pem", "*.key", "credentials*"]
+  max_file_bytes: 1048576
+  max_directory_entries: 500
+infrastructure:
+  approved_roots: []
+  allowed_extensions: []
+  blocked_patterns: [".env", ".env.*", "*.pem", "*.key", "credentials*"]
+  max_file_bytes: 1048576
+  max_directory_entries: 500
 limits:
   max_records: 100
   max_output_bytes: 262144

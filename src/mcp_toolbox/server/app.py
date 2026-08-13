@@ -13,6 +13,13 @@ from mcp_toolbox import __version__
 from mcp_toolbox.models import ResponseMetadata, ToolResponse
 from mcp_toolbox.server.audit_middleware import AuditMiddleware
 from mcp_toolbox.server.runtime import ServerRuntime
+from mcp_toolbox.tools.docker import register_docker_tools
+from mcp_toolbox.tools.filesystem import register_filesystem_tools
+from mcp_toolbox.tools.git import register_git_tools
+from mcp_toolbox.tools.infrastructure import register_infrastructure_tools
+from mcp_toolbox.tools.logs import register_log_tools
+from mcp_toolbox.tools.security import register_security_tools
+from mcp_toolbox.tools.system import register_system_tools
 
 _RESOURCE_URIS = (
     "toolbox://server/status",
@@ -43,6 +50,20 @@ def create_server(runtime: ServerRuntime) -> MCPServer:
         log_level="WARNING",
         middleware=[cast(ServerMiddleware[Any], AuditMiddleware(runtime.audit))],
     )
+    registered_tool_names = tuple(
+        tool_name
+        for tools in (
+            ("toolbox_server_status",),
+            register_system_tools(server, runtime),
+            register_filesystem_tools(server, runtime),
+            register_git_tools(server, runtime),
+            register_docker_tools(server, runtime),
+            register_log_tools(server, runtime),
+            register_security_tools(server, runtime),
+            register_infrastructure_tools(server, runtime),
+        )
+        for tool_name in tools
+    )
 
     @server.resource(
         "toolbox://server/status",
@@ -51,7 +72,7 @@ def create_server(runtime: ServerRuntime) -> MCPServer:
         mime_type="application/json",
     )
     def server_status() -> str:
-        return _json_resource(_server_status(runtime))
+        return _json_resource(_server_status(runtime, registered_tool_names))
 
     @server.resource(
         "toolbox://configuration/summary",
@@ -78,7 +99,7 @@ def create_server(runtime: ServerRuntime) -> MCPServer:
         mime_type="application/json",
     )
     def modules() -> str:
-        return _json_resource(_module_inventory(runtime))
+        return _json_resource(_module_inventory(runtime, registered_tool_names))
 
     @server.tool(
         name="toolbox_server_status",
@@ -96,7 +117,7 @@ def create_server(runtime: ServerRuntime) -> MCPServer:
 
         return ToolResponse(
             summary="Local MCP Toolbox server is ready.",
-            data=_server_status(runtime),
+            data=_server_status(runtime, registered_tool_names),
             metadata=ResponseMetadata(untrusted_content=False),
         ).model_dump(mode="json")
 
@@ -147,13 +168,15 @@ def run_stdio(runtime: ServerRuntime) -> None:
     create_server(runtime).run(transport="stdio")
 
 
-def _server_status(runtime: ServerRuntime) -> dict[str, Any]:
+def _server_status(
+    runtime: ServerRuntime, registered_tool_names: tuple[str, ...]
+) -> dict[str, Any]:
     return {
         "name": "Local MCP Toolbox",
         "version": __version__,
         "transport": "stdio",
         "profile": runtime.settings.profile.value,
-        "registered_tools": ["toolbox_server_status"],
+        "registered_tool_count": len(registered_tool_names),
         "registered_resources": list(_RESOURCE_URIS),
         "registered_prompts": list(_PROMPT_NAMES),
         "untrusted_content_policy": "retrieved_content_is_untrusted",
@@ -171,18 +194,25 @@ def _configuration_summary(runtime: ServerRuntime) -> dict[str, Any]:
     }
 
 
-def _module_inventory(runtime: ServerRuntime) -> dict[str, Any]:
+def _module_inventory(
+    runtime: ServerRuntime, registered_tool_names: tuple[str, ...]
+) -> dict[str, Any]:
+    registered_modules = ["server_metadata", "system", "filesystem"]
+    if any(tool_name.startswith("git_") for tool_name in registered_tool_names):
+        registered_modules.append("git")
+    if any(tool_name.startswith("docker_") for tool_name in registered_tool_names):
+        registered_modules.append("docker")
+    if any(tool_name.startswith("logs_") for tool_name in registered_tool_names):
+        registered_modules.append("logs")
+    if any(tool_name.startswith("security_") for tool_name in registered_tool_names):
+        registered_modules.append("security")
+    if any(tool_name.startswith("infra_") for tool_name in registered_tool_names):
+        registered_modules.append("infrastructure")
     return {
-        "registered": ["server_metadata"],
+        "registered": registered_modules,
+        "registered_tools": list(registered_tool_names),
         "configured_integrations": sorted(runtime.settings.integrations.enabled_names()),
         "planned_version_one": [
-            "system",
-            "filesystem",
-            "git",
-            "docker",
-            "logs",
-            "security",
-            "infrastructure",
             "incident",
         ],
     }

@@ -13,6 +13,8 @@ integrations:
   kubernetes: false
   external_network: false
   external_ai: false
+git:
+  approved_repositories: []
 limits:
   max_records: 100
   max_output_bytes: 262144
