@@ -4,7 +4,7 @@ filesystem:
   approved_roots: []
   allowed_extensions: [".md", ".txt", ".json", ".yaml", ".yml", ".toml"]
   blocked_patterns: [".env", ".env.*", "*.pem", "*.key"]
-  max_file_bytes: 1048576
+  max_file_bytes: 240000
   max_directory_entries: 500
 integrations:
   docker: false

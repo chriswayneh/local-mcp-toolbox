@@ -51,9 +51,18 @@ class FilesystemAuthorizer:
         return resolved
 
     def check_directory(self, requested_path: Path) -> PermissionDecision:
-        """Check a directory path without applying file extension restrictions."""
+        """Check containment and sensitive-name restrictions for a directory path."""
 
-        return self._check_containment(requested_path)
+        containment = self._check_containment(requested_path)
+        if not containment.allowed:
+            return containment
+
+        canonical = requested_path.resolve(strict=False)
+        if self._matches_blocked_pattern(canonical):
+            return PermissionDecision(
+                False, "The path matches a blocked sensitive-file pattern.", "blocked_pattern"
+            )
+        return containment
 
     def check_file(self, requested_path: Path) -> PermissionDecision:
         """Check containment, blocked names, and allowlisted file extensions."""
@@ -117,9 +126,33 @@ class FilesystemAuthorizer:
         )
 
     def _matches_blocked_pattern(self, canonical: Path) -> bool:
-        names = (part.lower() for part in canonical.parts)
+        names = tuple(self._normalized_name(part) for part in canonical.parts)
         patterns = tuple(pattern.lower() for pattern in self._settings.blocked_patterns)
-        return any(fnmatchcase(name, pattern) for name in names for pattern in patterns)
+        return any(
+            fnmatchcase(name, pattern) or self._matches_short_name_alias(name, pattern)
+            for name in names
+            for pattern in patterns
+        )
+
+    @staticmethod
+    def _normalized_name(part: str) -> str:
+        """Normalize Windows aliases that can disguise a blocked filename."""
+
+        candidate = part.lower().rstrip(" .")
+        if ":" in candidate and not candidate.endswith(":"):
+            candidate = candidate.split(":", maxsplit=1)[0]
+        return candidate
+
+    @staticmethod
+    def _matches_short_name_alias(name: str, pattern: str) -> bool:
+        """Fail closed for a Windows 8.3 name that abbreviates a blocked basename."""
+
+        stem = name.split(".", maxsplit=1)[0]
+        if "~" not in stem:
+            return False
+        prefix, suffix = stem.rsplit("~", maxsplit=1)
+        blocked_stem = pattern.split("*", maxsplit=1)[0].split(".", maxsplit=1)[0]
+        return bool(prefix and suffix.isdigit() and blocked_stem.startswith(prefix))
 
 
 class PermissionService:

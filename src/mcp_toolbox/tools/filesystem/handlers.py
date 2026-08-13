@@ -34,19 +34,19 @@ def register_filesystem_tools(server: MCPServer, runtime: ServerRuntime) -> tupl
                 remediation="Use a non-negative offset.",
             )
         directory = _require_existing_directory(runtime, path)
-        entries = sorted(
-            directory.iterdir(), key=lambda item: (not item.is_dir(), item.name.lower())
-        )
+        entries, scanned_entries, truncated = _safe_directory_entries(runtime, directory)
         page = entries[offset : offset + result_limit]
         return bounded_response(
             runtime,
             f"Listed {len(page)} entries from an approved directory.",
             {
-                "entries": [_entry_metadata(entry) for entry in page],
+                "entries": page,
                 "offset": offset,
                 "limit": result_limit,
                 "next_offset": offset + len(page) if offset + len(page) < len(entries) else None,
-                "total_entries": len(entries),
+                "visible_entries": len(entries),
+                "scanned_entries": scanned_entries,
+                "truncated": truncated,
             },
         )
 
@@ -138,6 +138,44 @@ def _entry_metadata(path: Path) -> dict[str, Any]:
         "size_bytes": None if path.is_dir() else stat.st_size,
         "modified_at": datetime.fromtimestamp(stat.st_mtime, UTC).isoformat(),
     }
+
+
+def _safe_directory_entries(
+    runtime: ServerRuntime, directory: Path
+) -> tuple[list[dict[str, Any]], int, bool]:
+    """Collect only a policy-filtered, bounded directory prefix without leaking OS errors."""
+
+    entries: list[tuple[bool, str, dict[str, Any]]] = []
+    scanned_entries = 0
+    truncated = False
+    try:
+        iterator = directory.iterdir()
+        for candidate in iterator:
+            if scanned_entries >= runtime.settings.filesystem.max_directory_entries:
+                truncated = True
+                break
+            scanned_entries += 1
+            try:
+                is_directory = candidate.is_dir()
+                decision = (
+                    runtime.permissions.filesystem.check_directory(candidate)
+                    if is_directory
+                    else runtime.permissions.filesystem.check_file(candidate)
+                )
+                if not decision.allowed:
+                    continue
+                metadata = _entry_metadata(candidate)
+            except OSError:
+                continue
+            entries.append((not is_directory, candidate.name.lower(), metadata))
+    except OSError as error:
+        raise ToolboxError(
+            ErrorCategory.RESOURCE_NOT_FOUND,
+            "The approved directory could not be listed.",
+            remediation="Check that the directory still exists and is readable.",
+        ) from error
+    entries.sort(key=lambda item: (item[0], item[1]))
+    return [metadata for _, _, metadata in entries], scanned_entries, truncated
 
 
 _READ_ONLY = ToolAnnotations(

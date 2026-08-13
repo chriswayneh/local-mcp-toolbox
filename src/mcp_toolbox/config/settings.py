@@ -26,7 +26,7 @@ class FilesystemSettings(BaseModel):
     approved_roots: list[Path] = Field(default_factory=list)
     allowed_extensions: frozenset[str] = Field(default_factory=frozenset)
     blocked_patterns: tuple[str, ...] = ()
-    max_file_bytes: int = Field(default=1_048_576, ge=1, le=100 * 1_048_576)
+    max_file_bytes: int = Field(default=240_000, ge=1, le=100 * 1_048_576)
     max_directory_entries: int = Field(default=500, ge=1, le=10_000)
 
     @field_validator("allowed_extensions", mode="before")
