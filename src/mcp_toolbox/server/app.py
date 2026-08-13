@@ -13,6 +13,8 @@ from mcp_toolbox import __version__
 from mcp_toolbox.models import ResponseMetadata, ToolResponse
 from mcp_toolbox.server.audit_middleware import AuditMiddleware
 from mcp_toolbox.server.runtime import ServerRuntime
+from mcp_toolbox.tools.filesystem import register_filesystem_tools
+from mcp_toolbox.tools.system import register_system_tools
 
 _RESOURCE_URIS = (
     "toolbox://server/status",
@@ -42,6 +44,11 @@ def create_server(runtime: ServerRuntime) -> MCPServer:
         version=__version__,
         log_level="WARNING",
         middleware=[cast(ServerMiddleware[Any], AuditMiddleware(runtime.audit))],
+    )
+    registered_tool_names = (
+        "toolbox_server_status",
+        *register_system_tools(server, runtime),
+        *register_filesystem_tools(server, runtime),
     )
 
     @server.resource(
@@ -78,7 +85,7 @@ def create_server(runtime: ServerRuntime) -> MCPServer:
         mime_type="application/json",
     )
     def modules() -> str:
-        return _json_resource(_module_inventory(runtime))
+        return _json_resource(_module_inventory(runtime, registered_tool_names))
 
     @server.tool(
         name="toolbox_server_status",
@@ -153,7 +160,7 @@ def _server_status(runtime: ServerRuntime) -> dict[str, Any]:
         "version": __version__,
         "transport": "stdio",
         "profile": runtime.settings.profile.value,
-        "registered_tools": ["toolbox_server_status"],
+        "registered_tool_count": 7,
         "registered_resources": list(_RESOURCE_URIS),
         "registered_prompts": list(_PROMPT_NAMES),
         "untrusted_content_policy": "retrieved_content_is_untrusted",
@@ -171,13 +178,14 @@ def _configuration_summary(runtime: ServerRuntime) -> dict[str, Any]:
     }
 
 
-def _module_inventory(runtime: ServerRuntime) -> dict[str, Any]:
+def _module_inventory(
+    runtime: ServerRuntime, registered_tool_names: tuple[str, ...]
+) -> dict[str, Any]:
     return {
-        "registered": ["server_metadata"],
+        "registered": ["server_metadata", "system", "filesystem"],
+        "registered_tools": list(registered_tool_names),
         "configured_integrations": sorted(runtime.settings.integrations.enabled_names()),
         "planned_version_one": [
-            "system",
-            "filesystem",
             "git",
             "docker",
             "logs",

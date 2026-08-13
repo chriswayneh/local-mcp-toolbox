@@ -28,7 +28,8 @@
 
 - [x] Typed settings, permission service, redaction, audit records, contracts, and safe errors
 - [x] MCP stdio server, resources, prompts, and startup validation
-- [ ] System, filesystem, Git, Docker, logs, scanners, infrastructure, and incident modules
+- [x] System metadata and approved-root filesystem inspection
+- [ ] Git, Docker, logs, scanners, infrastructure, and incident modules
 - [ ] CLI, doctor, Docker packaging, docs, demo, and security regressions
 
 ## Version 1.5 — Connected Integrations

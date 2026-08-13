@@ -6,6 +6,8 @@
 
 This repository has completed **Phase 3 — MCP Server**. The server now runs over stdio with startup policy validation, audited protocol requests, safe metadata resources, reusable safety prompts, and one read-only server-status tool. Environment-inspection modules arrive in the next phase.
 
+The first Version 1 inspection increment is now available: safe system metadata and approved-root filesystem inspection. Git, Docker, logs, security scanners, infrastructure inventory, and incident tooling remain in progress.
+
 ### Implemented foundation
 
 - Strict Pydantic configuration models with YAML loading and profile invariants
@@ -15,6 +17,7 @@ This repository has completed **Phase 3 — MCP Server**. The server now runs ov
 - Sanitized append-only JSONL audit events with request metadata, timing, permission decision, and redaction count
 - Unit and adversarial regressions for configuration, path traversal, sensitive paths, extension restrictions, integration denial, redaction, and audit leakage
 - MCP stdio transport with a subprocess integration test, safe MCP resources/prompts, and audited protocol requests
+- Read-only system metadata and approved-root filesystem listing, metadata, and redacted text reads
 
 ## Why this project exists
 
@@ -101,6 +104,16 @@ python -m venv .venv
 
 See [getting started](docs/getting-started.md) for a generic stdio client configuration.
 
+## Current tool catalog
+
+| Module | Tools | Guardrails |
+| --- | --- | --- |
+| Server | `toolbox_server_status` | Server-generated metadata only. |
+| System | `system_info`, `disk_usage`, `installed_developer_tools` | Standard-library metadata only; no environment-variable or process command-line exposure. |
+| Filesystem | `filesystem_list_directory`, `filesystem_file_metadata`, `filesystem_read_text_file` | Canonical approved-root containment, sensitive-file blocklist, extension allowlist, file/result limits, and redaction. |
+
+See [tool catalog](docs/tools.md) for parameters and output behavior.
+
 ## Documentation
 
 - [Architecture](docs/architecture.md)
@@ -108,6 +121,7 @@ See [getting started](docs/getting-started.md) for a generic stdio client config
 - [Threat model](docs/threat-model.md)
 - [Permissions](docs/permissions.md)
 - [Getting started](docs/getting-started.md)
+- [Tool catalog](docs/tools.md)
 - [Roadmap](ROADMAP.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security reporting](SECURITY.md)

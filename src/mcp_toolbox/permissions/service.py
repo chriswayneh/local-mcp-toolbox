@@ -85,6 +85,18 @@ class FilesystemAuthorizer:
             )
         return requested_path.resolve(strict=False)
 
+    def require_directory(self, requested_path: Path) -> Path:
+        """Return a canonical permitted directory path or raise a safe denial."""
+
+        decision = self.check_directory(requested_path)
+        if not decision.allowed:
+            raise ToolboxError(
+                ErrorCategory.PERMISSION_DENIED,
+                "Filesystem access was denied by the active policy.",
+                remediation="Use an approved absolute directory path.",
+            )
+        return requested_path.resolve(strict=False)
+
     def _check_containment(self, requested_path: Path) -> PermissionDecision:
         if not requested_path.is_absolute():
             return PermissionDecision(

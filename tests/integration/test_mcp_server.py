@@ -17,7 +17,15 @@ from mcp_toolbox.server import build_runtime, create_server
 
 
 def _settings(audit_path: Path, root: Path | None = None) -> ToolboxSettings:
-    filesystem = FilesystemSettings(approved_roots=[root]) if root else FilesystemSettings()
+    filesystem = (
+        FilesystemSettings(
+            approved_roots=[root],
+            allowed_extensions=[".md", ".txt", ".json"],
+            blocked_patterns=[".env", "*.pem", "*.key"],
+        )
+        if root
+        else FilesystemSettings()
+    )
     return ToolboxSettings(filesystem=filesystem, audit=AuditSettings(path=audit_path))
 
 
@@ -38,7 +46,15 @@ def test_in_memory_mcp_server_lists_safe_capabilities_and_audits_requests(tmp_pa
             prompt = await client.get_prompt("analyze_repository")
             tool_result = await client.call_tool("toolbox_server_status")
 
-            assert [tool.name for tool in tools.tools] == ["toolbox_server_status"]
+            assert {tool.name for tool in tools.tools} == {
+                "toolbox_server_status",
+                "system_info",
+                "disk_usage",
+                "installed_developer_tools",
+                "filesystem_list_directory",
+                "filesystem_file_metadata",
+                "filesystem_read_text_file",
+            }
             assert {resource.uri for resource in resources.resources} == {
                 "toolbox://server/status",
                 "toolbox://configuration/summary",
@@ -109,7 +125,7 @@ def test_stdio_transport_serves_the_registered_status_tool(tmp_path: Path) -> No
                 async with ClientSession(read, write) as session:
                     await session.initialize()
                     tools = await session.list_tools()
-                    assert [tool.name for tool in tools.tools] == ["toolbox_server_status"]
+                    assert "toolbox_server_status" in {tool.name for tool in tools.tools}
 
     asyncio.run(scenario())
     assert audit_path.exists()
