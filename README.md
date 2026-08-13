@@ -12,9 +12,9 @@ The Version 1 inspection modules now include safe system metadata, approved-root
 
 - Strict Pydantic configuration models with YAML loading and profile invariants
 - Canonical approved-root filesystem authorization, blocked sensitive-file patterns, and integration gating
-- Central redaction for common credentials, keys, tokens, connection passwords, and optional privacy identifiers
+- Central redaction for PEM blocks, common API/service credentials, authorization headers, connection passwords, and optional privacy identifiers
 - Structured, client-safe response and error contracts
-- Sanitized append-only JSONL audit events with request metadata, timing, permission decision, and redaction count
+- Sanitized, size-bounded JSONL audit events with retention, request metadata, timing, actual permission outcome, and redaction count
 - Unit and adversarial regressions for configuration, path traversal, sensitive paths, extension restrictions, integration denial, redaction, and audit leakage
 - MCP stdio transport with a subprocess integration test, safe MCP resources/prompts, and audited protocol requests
 - Read-only system metadata and approved-root filesystem listing, metadata, and redacted text reads
@@ -117,7 +117,7 @@ python -m venv .venv
 | --- | --- | --- |
 | Server | `toolbox_server_status` | Server-generated metadata only. |
 | System | `system_info`, `disk_usage`, `installed_developer_tools` | Standard-library metadata only; no environment-variable or process command-line exposure. |
-| Filesystem | `filesystem_list_directory`, `filesystem_file_metadata`, `filesystem_read_text_file` | Canonical approved-root containment, sensitive-file blocklist, extension allowlist, file/result limits, and redaction. |
+| Filesystem | `filesystem_list_directory`, `filesystem_file_metadata`, `filesystem_read_text_file` | Canonical approved-root containment, Windows alias-aware sensitive-path blocklist, bounded filtered enumeration, extension allowlist, compatible file/result limits, and redaction. |
 | Git | `git_repository_status`, `git_current_branch`, `git_recent_commits`, `git_diff_summary` | Explicit integration plus exact repository allowlist; fixed non-interactive Git arguments, no shell, time/output bounds, and redaction. |
 | Docker | `docker_list_containers`, `docker_container_details`, `docker_container_logs`, `docker_unhealthy_containers` | Explicit opt-in; official SDK only; no lifecycle, exec, image, network, volume, label, mount, environment, or command access; bounded output and redaction. |
 | Logs | `logs_tail_file`, `logs_search`, `logs_error_summary` | Separate explicit log roots; extension/blocklist checks, bounded files/records, literal-only search, secret redaction, and evidence-only summaries. |

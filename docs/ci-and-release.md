@@ -6,7 +6,7 @@ manual release needs to create a GitHub release.
 
 | Workflow | Trigger | Checks and outputs |
 | --- | --- | --- |
-| `Quality` | Pull requests and `main` | Python 3.12/3.13 install, formatting, lint, typing, and tests. |
+| `Quality` | Pull requests and `main` | Ubuntu Python 3.12/3.13 plus Windows Python 3.12 install, formatting, lint, typing, and tests. |
 | `Security and supply chain` | Pull requests, `main`, weekly schedule, manual | Bandit, pip-audit, and a CycloneDX SBOM artifact. |
 | `Documentation` | Documentation/example changes and `main` | Local Markdown links, documented task targets, client-example parsing, and demo Compose safety. |
 | `Release` | Manual only | Validates an existing version tag, runs all release checks, builds artifacts and an SBOM, then creates a GitHub release. |
