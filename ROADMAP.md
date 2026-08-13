@@ -24,14 +24,35 @@
 - [x] Register safe server metadata, resources, and reusable prompts
 - [x] Add server startup validation and MCP integration tests
 
-## Version 1.0 — Secure Read-Only Core
+## Phase 4 — Version 1 Tools
 
 - [x] Typed settings, permission service, redaction, audit records, contracts, and safe errors
 - [x] MCP stdio server, resources, prompts, and startup validation
 - [x] System metadata and approved-root filesystem inspection
 - [x] Approved-repository, read-only Git inspection
-- [ ] Docker, logs, scanners, infrastructure, and incident modules
-- [ ] CLI, doctor, Docker packaging, docs, demo, and security regressions
+- [x] Opt-in Docker metadata, health, and bounded-log inspection
+- [x] Dedicated approved-root log tails, search, and deterministic error summaries
+- [ ] Security scanners, infrastructure, and incident modules
+
+## Phase 5 — CLI and Docker Deployment
+
+- [ ] Add operator doctor checks and task commands
+- [ ] Add production and development Dockerfiles
+- [ ] Add Docker Compose profiles, health checks, non-root runtime, and an audit volume
+- [ ] Document native execution, socket-proxy use, and direct-socket risk
+- [ ] Test native and containerized startup
+
+## Phase 6 — Documentation and Demo
+
+- [ ] Add complete client-configuration examples and operator troubleshooting guides
+- [ ] Add a safe demo application, logs, and intentionally insecure test fixtures
+- [ ] Add architecture, permission, and deployment diagrams plus a walkthrough
+
+## Phase 7 — CI and Release Preparation
+
+- [ ] Add GitHub Actions for quality, security, documentation, and build validation
+- [ ] Add Dependabot, issue and pull-request templates, release controls, and SBOM generation
+- [ ] Validate documentation commands and publish the Version 1 release checklist
 
 ## Version 1.5 — Connected Integrations
 

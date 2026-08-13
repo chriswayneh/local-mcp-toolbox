@@ -61,3 +61,45 @@ git:
   approved_repositories:
     - C:\\absolute\\path\\to\\approved-project
 ```
+
+## Docker
+
+| Tool | Inputs | Output | Safety controls |
+| --- | --- | --- | --- |
+| `docker_list_containers` | Optional bounded `limit`, optional `include_stopped` | Container ID, name, image tag, runtime status, health status, restart count | Requires explicit Docker integration; excludes labels, mounts, environment, and command data. |
+| `docker_container_details` | Validated container name or ID | Selected lifecycle and health metadata | Uses the official Docker SDK; excludes labels, mounts, environment, and command data. |
+| `docker_container_logs` | Validated container name or ID, optional bounded `tail` | Bounded recent stdout/stderr log text | Returned logs are untrusted data, bounded before decoding, and centrally redacted. |
+| `docker_unhealthy_containers` | Optional bounded `limit` | Safe metadata for containers reporting `unhealthy` | Deterministic filter only; it never restarts or changes a container. |
+
+Enable Docker inspection only when needed:
+
+```yaml
+profile: standard
+integrations:
+  docker: true
+```
+
+Install the optional SDK with `pip install -e ".[docker]"` (or `.[dev,docker]` for development). Docker API access, including a mounted Docker socket, is a high-privilege host boundary. Keep it local, grant the smallest access possible, and never expose the socket to untrusted software. No Docker mutation, exec, image, network, volume, label, mount, environment, or command-inspection tool is registered.
+
+## Logs
+
+| Tool | Inputs | Output | Safety controls |
+| --- | --- | --- | --- |
+| `logs_tail_file` | Absolute approved log `path`, optional bounded `lines` | Recent log lines | Uses dedicated approved log roots, extension/blocklist checks, file-size limits, record limits, and central redaction. |
+| `logs_search` | Absolute approved log `path`, single-line literal `query`, optional bounded `limit`, optional `case_sensitive` | Numbered matching lines | Queries are literal only, limited to 200 characters, and never execute a user-supplied regular expression. |
+| `logs_error_summary` | Absolute approved log `path`, optional bounded line window and group `limit` | Severity counts and repeated-line evidence groups | Deterministic keyword detection and redacted fingerprints; reports observations only and never claims root cause. |
+
+Enable log inspection with a minimal, separate root set:
+
+```yaml
+profile: standard
+integrations:
+  logs: true
+logs:
+  approved_roots:
+    - C:\\absolute\\path\\to\\application-logs
+  allowed_extensions: [".log", ".txt", ".jsonl", ".out"]
+  blocked_patterns: [".env", ".env.*", "*.pem", "*.key", "credentials*"]
+```
+
+Log output is untrusted data and is redacted before it reaches the client or audit storage. The module has no write, rotation, deletion, or generic command capability.

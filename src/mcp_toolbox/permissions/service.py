@@ -128,6 +128,7 @@ class PermissionService:
     def __init__(self, settings: ToolboxSettings) -> None:
         self.settings = settings
         self.filesystem = FilesystemAuthorizer(settings.filesystem)
+        self.logs = FilesystemAuthorizer(settings.logs)
         self.git = GitRepositoryAuthorizer(settings.git)
 
     def check_integration(self, integration: str) -> PermissionDecision:

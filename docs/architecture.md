@@ -38,9 +38,11 @@ sequenceDiagram
 
 Phase 3 supports stdio only. Startup first loads the explicit YAML profile, validates it, resolves approved roots, and composes the permission, redaction, and audit services. If validation fails, the CLI reports a safe configuration error on stderr and exits before the MCP protocol starts.
 
-The current MCP surface intentionally contains only server-generated capabilities:
+The current MCP surface combines server-generated metadata with narrow read-only modules:
 
 - `toolbox_server_status` — read-only server metadata; it never inspects the host.
+- System and approved-root filesystem inspection tools.
+- Exact-allowlist Git inspection, opt-in Docker inspection, and dedicated approved-root log inspection.
 - `toolbox://server/status`, `toolbox://configuration/summary`, `toolbox://security/policy`, and `toolbox://modules` resources.
 - `analyze_repository`, `summarize_recent_errors`, `troubleshoot_container`, and `perform_security_review` safe prompt templates.
 

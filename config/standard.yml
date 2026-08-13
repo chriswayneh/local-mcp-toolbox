@@ -10,6 +10,7 @@ filesystem:
 integrations:
   docker: true
   git: true
+  logs: false
   github: false
   kubernetes: false
   external_network: false
@@ -17,6 +18,12 @@ integrations:
 git:
   approved_repositories:
     - /absolute/path/to/approved/project
+logs:
+  approved_roots: []
+  allowed_extensions: [".log", ".txt", ".jsonl", ".out"]
+  blocked_patterns: [".env", ".env.*", "*.pem", "*.key", "credentials*"]
+  max_file_bytes: 5242880
+  max_directory_entries: 500
 limits:
   max_records: 100
   max_output_bytes: 262144

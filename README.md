@@ -4,9 +4,9 @@
 
 ## Status
 
-This repository has completed **Phase 3 — MCP Server**. The server now runs over stdio with startup policy validation, audited protocol requests, safe metadata resources, reusable safety prompts, and one read-only server-status tool. Environment-inspection modules arrive in the next phase.
+This repository has completed **Phase 3 — MCP Server** and is progressing through **Phase 4 — Version 1 Tools**. The server runs over stdio with startup policy validation, audited protocol requests, safe metadata resources, reusable safety prompts, and narrowly scoped read-only inspection tools.
 
-The Version 1 inspection modules now include safe system metadata, approved-root filesystem inspection, and explicit-allowlist Git inspection. Docker, logs, security scanners, infrastructure inventory, and incident tooling remain in progress.
+The Version 1 inspection modules now include safe system metadata, approved-root filesystem inspection, explicit-allowlist Git inspection, opt-in Docker metadata, health, and bounded-log inspection, plus dedicated approved-root log analysis. Security scanners, infrastructure inventory, and incident tooling remain in progress.
 
 ### Implemented foundation
 
@@ -19,6 +19,8 @@ The Version 1 inspection modules now include safe system metadata, approved-root
 - MCP stdio transport with a subprocess integration test, safe MCP resources/prompts, and audited protocol requests
 - Read-only system metadata and approved-root filesystem listing, metadata, and redacted text reads
 - Read-only Git status, branch, recent-commit, and diff-summary inspection using fixed argument templates
+- Opt-in Docker container metadata, health, and bounded recent-log inspection through the official SDK
+- Dedicated approved-root log tails, literal search, and deterministic error grouping with redaction
 
 ## Why this project exists
 
@@ -99,7 +101,7 @@ Python 3.12+ is required. The current server deliberately starts with the restri
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python -m pip install -e ".[dev]"
+.\.venv\Scripts\python -m pip install -e ".[dev,docker]"
 .\.venv\Scripts\local-mcp-toolbox serve --config config\restricted.yml
 ```
 
@@ -113,6 +115,8 @@ See [getting started](docs/getting-started.md) for a generic stdio client config
 | System | `system_info`, `disk_usage`, `installed_developer_tools` | Standard-library metadata only; no environment-variable or process command-line exposure. |
 | Filesystem | `filesystem_list_directory`, `filesystem_file_metadata`, `filesystem_read_text_file` | Canonical approved-root containment, sensitive-file blocklist, extension allowlist, file/result limits, and redaction. |
 | Git | `git_repository_status`, `git_current_branch`, `git_recent_commits`, `git_diff_summary` | Explicit integration plus exact repository allowlist; fixed non-interactive Git arguments, no shell, time/output bounds, and redaction. |
+| Docker | `docker_list_containers`, `docker_container_details`, `docker_container_logs`, `docker_unhealthy_containers` | Explicit opt-in; official SDK only; no lifecycle, exec, image, network, volume, label, mount, environment, or command access; bounded output and redaction. |
+| Logs | `logs_tail_file`, `logs_search`, `logs_error_summary` | Separate explicit log roots; extension/blocklist checks, bounded files/records, literal-only search, secret redaction, and evidence-only summaries. |
 
 See [tool catalog](docs/tools.md) for parameters and output behavior.
 
