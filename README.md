@@ -4,7 +4,7 @@
 
 ## Status
 
-This repository has completed **Phase 5 — CLI and Docker Deployment** and is ready for **Phase 6 — Documentation and Demo**. The server runs over stdio with startup policy validation, audited protocol requests, safe metadata resources, reusable safety prompts, and narrowly scoped read-only inspection tools.
+This repository has completed **Phase 7 — CI and Release Preparation**. Version 1 is now feature-complete and ready for release-candidate review. The server runs over stdio with startup policy validation, audited protocol requests, safe metadata resources, reusable safety prompts, narrowly scoped read-only inspection tools, copy-ready client configuration templates, a synthetic local demo, and CI/release controls.
 
 The Version 1 inspection modules now include safe system metadata, approved-root filesystem inspection, explicit-allowlist Git inspection, opt-in Docker metadata, health, and bounded-log inspection, dedicated approved-root log analysis, a fixed-command Bandit adapter, top-level infrastructure detection, and deterministic incident evidence tools.
 
@@ -36,7 +36,7 @@ Version 1 delivers the secure read-only core:
 - MCP stdio server and Typer CLI
 - Permission profiles, path containment, output limits, structured errors, audit records, and centralized redaction
 - System, filesystem, Git, Docker, logs, security-scanner, infrastructure-inventory, and incident-summary modules
-- Native and Docker deployment, tests, and client configuration examples
+- Native and Docker deployment, tests, validated client configuration examples, and a safe walkthrough demo
 
 GitHub, Kubernetes, local-LLM, HTTP transport, dashboard, and all write operations are deliberately deferred. See [ROADMAP.md](ROADMAP.md).
 
@@ -109,7 +109,7 @@ python -m venv .venv
 .\.venv\Scripts\local-mcp-toolbox serve --config config\restricted.yml
 ```
 
-`doctor` validates configuration and reports non-mutating prerequisite checks. See [getting started](docs/getting-started.md) for a generic stdio client configuration.
+`doctor` validates configuration and reports non-mutating prerequisite checks. See [client configuration](docs/client-configuration.md) for ready-to-copy stdio templates and [the demo walkthrough](docs/demo-walkthrough.md) for a safe first inspection.
 
 ## Current tool catalog
 
@@ -134,7 +134,12 @@ See [tool catalog](docs/tools.md) for parameters and output behavior.
 - [Threat model](docs/threat-model.md)
 - [Permissions](docs/permissions.md)
 - [Getting started](docs/getting-started.md)
+- [Client configuration](docs/client-configuration.md)
+- [Operator troubleshooting](docs/troubleshooting.md)
 - [Container deployment](docs/docker.md)
+- [Safe demo walkthrough](docs/demo-walkthrough.md)
+- [CI and release controls](docs/ci-and-release.md)
+- [Version 1 release checklist](docs/release-checklist.md)
 - [Tool catalog](docs/tools.md)
 - [Roadmap](ROADMAP.md)
 - [Contributing](CONTRIBUTING.md)

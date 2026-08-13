@@ -47,15 +47,15 @@
 
 ## Phase 6 — Documentation and Demo
 
-- [ ] Add complete client-configuration examples and operator troubleshooting guides
-- [ ] Add a safe demo application, logs, and intentionally insecure test fixtures
-- [ ] Add architecture, permission, and deployment diagrams plus a walkthrough
+- [x] Add complete client-configuration examples and operator troubleshooting guides
+- [x] Add a safe demo application, logs, and intentionally insecure test fixtures
+- [x] Add architecture, permission, and deployment diagrams plus a walkthrough
 
 ## Phase 7 — CI and Release Preparation
 
-- [ ] Add GitHub Actions for quality, security, documentation, and build validation
-- [ ] Add Dependabot, issue and pull-request templates, release controls, and SBOM generation
-- [ ] Validate documentation commands and publish the Version 1 release checklist
+- [x] Add GitHub Actions for quality, security, documentation, and build validation
+- [x] Add Dependabot, issue and pull-request templates, release controls, and SBOM generation
+- [x] Validate documentation commands and publish the Version 1 release checklist
 
 ## Version 1.5 — Connected Integrations
 

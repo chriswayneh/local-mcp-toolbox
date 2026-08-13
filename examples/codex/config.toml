@@ -1,0 +1,7 @@
+# Add this block to ~/.codex/config.toml. Replace both placeholder paths.
+# Restart Codex after saving the configuration.
+
+[mcp_servers.local-mcp-toolbox]
+command = "<TOOLBOX_EXE>"
+args = ["serve", "--config", "<CONFIG_FILE>"]
+enabled = true

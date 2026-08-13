@@ -1,0 +1,20 @@
+name: Security-boundary concern
+description: Report a public design concern that does not include an exploitable vulnerability.
+title: "security: "
+labels: [security, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not use this form for a suspected vulnerability. Follow SECURITY.md and contact the maintainer privately.
+  - type: textarea
+    id: concern
+    attributes:
+      label: Design concern
+      description: Describe the boundary, expected invariant, and safe supporting evidence.
+    validations:
+      required: true
+  - type: textarea
+    id: mitigation
+    attributes:
+      label: Proposed mitigation

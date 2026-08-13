@@ -1,0 +1,34 @@
+name: local-mcp-toolbox-demo
+
+services:
+  healthy:
+    image: busybox:1.37.0
+    command: ["sh", "-c", "while true; do echo 'demo healthy service'; sleep 30; done"]
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 5s
+      timeout: 2s
+      retries: 2
+
+  unhealthy:
+    image: busybox:1.37.0
+    command: ["sh", "-c", "while true; do echo 'demo dependency check failed'; sleep 30; done"]
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD-SHELL", "echo 'intentional demo health-check failure' >&2; exit 1"]
+      interval: 5s
+      timeout: 2s
+      retries: 2

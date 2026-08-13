@@ -1,0 +1,8 @@
+# INTENTIONALLY INSECURE: fixture for inventory demonstrations only.
+# Never deploy this configuration.
+services:
+  fixture:
+    image: busybox:1.37.0
+    privileged: true
+    ports:
+      - "0.0.0.0:8080:80"

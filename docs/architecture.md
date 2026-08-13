@@ -34,6 +34,29 @@ sequenceDiagram
 | Audit service | JSONL event records and retention | Stores sanitized summaries, not raw tool content. |
 | Configuration | Validated profile loading | Configuration cannot silently elevate access. |
 
+## Module dependency and data flow
+
+```mermaid
+flowchart TB
+  Client["MCP client"] --> Transport["stdio transport"]
+  Transport --> Registry["Tool registry"]
+  Registry --> Policy["Permission service"]
+  Registry --> Tools["Read-only tool modules"]
+  Policy --> Tools
+  Tools --> Limits["Bounded collection"]
+  Limits --> Redaction["Redaction service"]
+  Redaction --> Contract["Safe response contract"]
+  Contract --> Client
+  Registry --> Audit["Sanitized audit service"]
+  Policy --> Audit
+  Redaction --> Audit
+```
+
+The registry does not expose a disabled module.  Tool modules receive a
+validated request only after the policy service authorizes the relevant root
+and integration.  Redaction and output limits apply before the response and
+before audit metadata is persisted.
+
 ## Current MCP surface
 
 Phase 3 supports stdio only. Startup first loads the explicit YAML profile, validates it, resolves approved roots, and composes the permission, redaction, and audit services. If validation fails, the CLI reports a safe configuration error on stderr and exits before the MCP protocol starts.

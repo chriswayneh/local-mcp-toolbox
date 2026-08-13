@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet("install", "doctor", "serve", "test", "lint", "format", "typecheck", "audit", "compose-validate", "docker-build", "docker-doctor")]
+    [ValidateSet("install", "doctor", "serve", "test", "lint", "format", "typecheck", "audit", "docs-validate", "package-build", "sbom", "compose-validate", "docker-build", "docker-doctor")]
     [string]$Task
 )
 
@@ -32,6 +32,15 @@ switch ($Task) {
     "audit" {
         Invoke-Checked $python @("-m", "bandit", "-q", "-r", "src")
         Invoke-Checked $python @("-m", "pip_audit")
+    }
+    "docs-validate" {
+        Invoke-Checked $python @("scripts\validate_docs.py")
+        Invoke-Checked $python @("-m", "pytest", "tests\unit\test_demo_assets.py")
+    }
+    "package-build" { Invoke-Checked $python @("-m", "build") }
+    "sbom" {
+        New-Item -ItemType Directory -Force "dist" | Out-Null
+        Invoke-Checked $python @("-m", "cyclonedx_py", "environment", "--output-file", "dist\sbom.cdx.json")
     }
     "compose-validate" {
         Invoke-Checked $docker @("compose", "--profile", "core", "-f", "compose.yaml", "config")
