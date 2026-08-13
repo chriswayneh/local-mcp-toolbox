@@ -16,6 +16,7 @@ from mcp_toolbox.server.runtime import ServerRuntime
 from mcp_toolbox.tools.docker import register_docker_tools
 from mcp_toolbox.tools.filesystem import register_filesystem_tools
 from mcp_toolbox.tools.git import register_git_tools
+from mcp_toolbox.tools.incident import register_incident_tools
 from mcp_toolbox.tools.infrastructure import register_infrastructure_tools
 from mcp_toolbox.tools.logs import register_log_tools
 from mcp_toolbox.tools.security import register_security_tools
@@ -61,6 +62,7 @@ def create_server(runtime: ServerRuntime) -> MCPServer:
             register_log_tools(server, runtime),
             register_security_tools(server, runtime),
             register_infrastructure_tools(server, runtime),
+            register_incident_tools(server, runtime),
         )
         for tool_name in tools
     )
@@ -208,13 +210,13 @@ def _module_inventory(
         registered_modules.append("security")
     if any(tool_name.startswith("infra_") for tool_name in registered_tool_names):
         registered_modules.append("infrastructure")
+    if any(tool_name.startswith("incident_") for tool_name in registered_tool_names):
+        registered_modules.append("incident")
     return {
         "registered": registered_modules,
         "registered_tools": list(registered_tool_names),
         "configured_integrations": sorted(runtime.settings.integrations.enabled_names()),
-        "planned_version_one": [
-            "incident",
-        ],
+        "planned_version_one": [],
     }
 
 

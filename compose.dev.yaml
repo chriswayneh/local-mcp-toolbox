@@ -1,0 +1,16 @@
+name: local-mcp-toolbox-dev
+
+services:
+  toolbox-dev:
+    profiles: ["development"]
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    init: true
+    stdin_open: true
+    tty: true
+    user: "10001:10001"
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace
+    command: ["sh"]

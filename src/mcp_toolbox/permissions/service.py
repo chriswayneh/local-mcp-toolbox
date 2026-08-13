@@ -131,6 +131,7 @@ class PermissionService:
         self.logs = FilesystemAuthorizer(settings.logs)
         self.security = FilesystemAuthorizer(settings.security)
         self.infrastructure = FilesystemAuthorizer(settings.infrastructure)
+        self.incident = FilesystemAuthorizer(settings.incident)
         self.git = GitRepositoryAuthorizer(settings.git)
 
     def check_integration(self, integration: str) -> PermissionDecision:

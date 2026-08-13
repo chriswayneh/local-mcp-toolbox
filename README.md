@@ -4,9 +4,9 @@
 
 ## Status
 
-This repository has completed **Phase 3 — MCP Server** and is progressing through **Phase 4 — Version 1 Tools**. The server runs over stdio with startup policy validation, audited protocol requests, safe metadata resources, reusable safety prompts, and narrowly scoped read-only inspection tools.
+This repository has completed **Phase 5 — CLI and Docker Deployment** and is ready for **Phase 6 — Documentation and Demo**. The server runs over stdio with startup policy validation, audited protocol requests, safe metadata resources, reusable safety prompts, and narrowly scoped read-only inspection tools.
 
-The Version 1 inspection modules now include safe system metadata, approved-root filesystem inspection, explicit-allowlist Git inspection, opt-in Docker metadata, health, and bounded-log inspection, dedicated approved-root log analysis, a fixed-command Bandit adapter, and top-level infrastructure detection. Incident tooling remains in progress.
+The Version 1 inspection modules now include safe system metadata, approved-root filesystem inspection, explicit-allowlist Git inspection, opt-in Docker metadata, health, and bounded-log inspection, dedicated approved-root log analysis, a fixed-command Bandit adapter, top-level infrastructure detection, and deterministic incident evidence tools.
 
 ### Implemented foundation
 
@@ -23,6 +23,7 @@ The Version 1 inspection modules now include safe system metadata, approved-root
 - Dedicated approved-root log tails, literal search, and deterministic error grouping with redaction
 - Security-scanner availability inventory and normalized Bandit findings from separate approved roots
 - Top-level project-type detection and infrastructure configuration inventory from separate approved roots
+- Incident timeline extraction and evidence-only summaries from separate approved log roots
 
 ## Why this project exists
 
@@ -104,10 +105,11 @@ Python 3.12+ is required. The restrictive profile starts with server metadata an
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python -m pip install -e ".[dev,docker]"
+.\.venv\Scripts\local-mcp-toolbox doctor --config config\restricted.yml
 .\.venv\Scripts\local-mcp-toolbox serve --config config\restricted.yml
 ```
 
-See [getting started](docs/getting-started.md) for a generic stdio client configuration.
+`doctor` validates configuration and reports non-mutating prerequisite checks. See [getting started](docs/getting-started.md) for a generic stdio client configuration.
 
 ## Current tool catalog
 
@@ -121,6 +123,7 @@ See [getting started](docs/getting-started.md) for a generic stdio client config
 | Logs | `logs_tail_file`, `logs_search`, `logs_error_summary` | Separate explicit log roots; extension/blocklist checks, bounded files/records, literal-only search, secret redaction, and evidence-only summaries. |
 | Security | `security_scanner_inventory`, `security_scan_repository` | Explicit scanner opt-in and separate roots; a fixed `bandit -q -r <approved-root> -f json` template, no shell, timeout/output bounds, normalized/redacted findings, and no automatic fixes. |
 | Infrastructure | `infra_detect_project_types`, `infra_configuration_inventory` | Explicit separate roots; marker names and top-level configuration names only—no file-content reads or recursive traversal. |
+| Incident | `incident_extract_timeline`, `incident_summarize_evidence` | Explicit separate log roots; bounded/redacted evidence only, timestamp extraction, no causal claims, and no AI dependency. |
 
 See [tool catalog](docs/tools.md) for parameters and output behavior.
 
@@ -131,6 +134,7 @@ See [tool catalog](docs/tools.md) for parameters and output behavior.
 - [Threat model](docs/threat-model.md)
 - [Permissions](docs/permissions.md)
 - [Getting started](docs/getting-started.md)
+- [Container deployment](docs/docker.md)
 - [Tool catalog](docs/tools.md)
 - [Roadmap](ROADMAP.md)
 - [Contributing](CONTRIBUTING.md)

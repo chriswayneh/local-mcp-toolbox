@@ -1,0 +1,11 @@
+# Container-safe default: local stdio, read-only, and no host integrations.
+profile: restricted
+filesystem:
+  approved_roots: []
+  allowed_extensions: [".md", ".txt", ".json", ".yaml", ".yml", ".toml", ".py", ".ts"]
+  blocked_patterns: [".env", ".env.*", "id_rsa", "id_ed25519", "*.pem", "*.key", "credentials*"]
+  max_file_bytes: 1048576
+  max_directory_entries: 500
+audit:
+  path: /var/lib/local-mcp-toolbox/audit/events.jsonl
+  retention_days: 30
