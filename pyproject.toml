@@ -36,15 +36,15 @@ Security = "https://github.com/chriswayneh/local-mcp-toolbox/security/policy"
 [project.optional-dependencies]
 dev = [
   "bandit[toml]>=1.8,<2",
-  "mypy>=1.14,<2",
+  "mypy>=1.14,<3",
   "pip-audit>=2.8,<3",
   "pytest>=9.0.3,<10",
-  "pytest-cov>=6,<7",
+  "pytest-cov>=6,<8",
   "ruff>=0.9,<1",
   "types-PyYAML>=6.0.12",
 ]
 docker = ["docker>=7.1,<8"]
-kubernetes = ["kubernetes>=32,<35"]
+kubernetes = ["kubernetes>=32,<37"]
 release = [
   "build>=1.2,<3",
   "cyclonedx-bom>=5,<8",
