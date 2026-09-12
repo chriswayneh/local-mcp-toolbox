@@ -36,6 +36,7 @@ The exposed tools cannot edit your files, commit code, or restart containers. Th
 | System | Safe host metadata and developer-tool availability | No environment variables, usernames, process data, or executable paths |
 | Filesystem | Approved-root listing, metadata, and text inspection | Canonical containment, sensitive-path blocklist, extension allowlist, bounded reads |
 | Git | Repository status, branch, commits, and diff summaries | Explicit repository allowlist; fixed, non-interactive Git commands |
+| GitHub | Repository, issue, and pull-request metadata | External-network opt-in, exact repository allowlist, fixed API origin, bounded GET requests |
 | Docker | Opt-in container metadata, health, and bounded logs | Official SDK only; no lifecycle, exec, mount, environment, or command access |
 | Logs | Tails, literal search, and deterministic error grouping | Dedicated approved roots, output limits, and central redaction |
 | Security | Bandit availability and normalized scan findings | Fixed scanner invocation; no user-controlled command arguments or fixes |
@@ -93,7 +94,7 @@ The design applies zero trust and least privilege: each request is checked again
 | Central redaction | PEM blocks, credentials, cookies, authorization headers, connection strings, and optional privacy identifiers are redacted before output. |
 | Output bounds | File reads, collections, subprocess output, and responses are size-limited. |
 | Sanitized audit | Requests record safe metadata, actual outcomes, and redaction counts. Raw secrets and tool output are excluded. |
-| Explicit integrations | Git, Docker, logs, scanners, infrastructure, and incident tools must be configured intentionally. |
+| Explicit integrations | GitHub, Git, Docker, logs, scanners, infrastructure, and incident tools must be configured intentionally. |
 | Untrusted evidence | Retrieved files, logs, commit messages, and metadata are treated as untrusted data. |
 
 Read the [security model](docs/security-model.md), [threat model](docs/threat-model.md), and the security-focused [architecture decisions](docs/adr/) for the complete rationale.
@@ -196,7 +197,7 @@ demo/             Synthetic services, logs, and intentionally insecure test fixt
 
 Version 1.0.0 delivers the secure read-only core: MCP stdio transport, typed tools, policy enforcement, centralized redaction, structured errors, sanitized auditing, Docker packaging, a synthetic demo, and CI/release controls.
 
-GitHub, Kubernetes, local LLM, HTTP transport, dashboards, and all write operations are intentionally deferred. See the [roadmap](ROADMAP.md) and [changelog](CHANGELOG.md) for release history and future scope.
+Version 1.5 development adds allowlisted, read-only connected integrations while preserving the same deny-by-default boundary. Kubernetes, local LLM, HTTP transport, dashboards, and all write operations remain roadmap work. See the [roadmap](ROADMAP.md) and [changelog](CHANGELOG.md) for release history and future scope.
 
 ## Contributing and Security
 

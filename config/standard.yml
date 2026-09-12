@@ -21,6 +21,8 @@ integrations:
 git:
   approved_repositories:
     - /absolute/path/to/approved/project
+github:
+  approved_repositories: []
 logs:
   approved_roots: []
   allowed_extensions: [".log", ".txt", ".jsonl", ".out"]

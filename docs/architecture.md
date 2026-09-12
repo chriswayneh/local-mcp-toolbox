@@ -26,7 +26,7 @@ sequenceDiagram
 
 | Component | Responsibility | Security invariant |
 | --- | --- | --- |
-| Transport | MCP stdio lifecycle | Stdio is default; network transport is opt-in later. |
+| Transport | MCP stdio lifecycle | Stdio remains default; connected tool APIs are separately opt-in. |
 | Tool registry | Modular registration and capability discovery | Disabled modules are not registered. |
 | Permission service | Profile, root, integration, and operation decisions | Ambiguous requests are denied. |
 | Tool modules | Typed, narrow read-only data collection | No generic shell or mutation tool exists. |
@@ -65,7 +65,7 @@ The current MCP surface combines server-generated metadata with narrow read-only
 
 - `toolbox_server_status`: read-only server metadata; it never inspects the host.
 - System and approved-root filesystem inspection tools.
-- Exact-allowlist Git inspection, opt-in Docker inspection, dedicated approved-root log inspection,
+- Exact-allowlist Git and GitHub inspection, opt-in Docker inspection, dedicated approved-root log inspection,
   fixed-command Bandit scanning, top-level infrastructure metadata inventory, and deterministic
   incident evidence extraction.
 - `toolbox://server/status`, `toolbox://configuration/summary`, `toolbox://security/policy`, and `toolbox://modules` resources.
@@ -73,14 +73,15 @@ The current MCP surface combines server-generated metadata with narrow read-only
 
 Every MCP request is recorded through audit middleware. The middleware sends only sanitized parameters to the JSONL audit logger; audit records never include raw secrets or tool output.
 
-## Version 1 module order
+## Module delivery order
 
 1. Foundation: settings, permissions, redaction, auditing, response contracts
 2. MCP server: stdio registration, resources, prompts, startup checks
 3. Tools: system, filesystem, Git, Docker, logs, scanner adapters, infrastructure, incident summaries
 4. Operations: CLI, doctor, Docker packaging
 5. Quality: demo, docs, CI, release controls
+6. Connected integrations: exact remote allowlists, fixed API origins, network opt-in
 
 ## Non-goals
 
-Version 1 does not mutate infrastructure, run arbitrary commands, write documentation files, access secret values, or expose an unauthenticated network listener.
+The toolbox does not mutate infrastructure, run arbitrary commands, write documentation files, access secret values, or expose an unauthenticated network listener.

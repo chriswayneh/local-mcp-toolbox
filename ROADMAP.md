@@ -65,7 +65,8 @@
 
 ## Version 1.5: Connected Integrations
 
-- [ ] Read-only GitHub and Kubernetes integrations
+- [x] Read-only GitHub integration
+- [ ] Read-only Kubernetes integration
 - [ ] Local Ollama provider, metrics, authenticated localhost HTTP
 
 ## Version 2.0: Operations Intelligence

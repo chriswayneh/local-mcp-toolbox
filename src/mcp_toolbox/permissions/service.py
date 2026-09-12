@@ -6,7 +6,12 @@ from dataclasses import dataclass
 from fnmatch import fnmatchcase
 from pathlib import Path
 
-from mcp_toolbox.config.settings import FilesystemSettings, GitSettings, ToolboxSettings
+from mcp_toolbox.config.settings import (
+    FilesystemSettings,
+    GitHubSettings,
+    GitSettings,
+    ToolboxSettings,
+)
 from mcp_toolbox.models import ErrorCategory, ToolboxError
 
 
@@ -166,6 +171,7 @@ class PermissionService:
         self.infrastructure = FilesystemAuthorizer(settings.infrastructure)
         self.incident = FilesystemAuthorizer(settings.incident)
         self.git = GitRepositoryAuthorizer(settings.git)
+        self.github = GitHubRepositoryAuthorizer(settings.github)
 
     def check_integration(self, integration: str) -> PermissionDecision:
         enabled = self.settings.integrations.model_dump().get(integration)
@@ -194,6 +200,13 @@ class PermissionService:
         self.require_integration("git")
         repository = self.filesystem.require_directory(requested_path)
         return self.git.require_repository(repository)
+
+    def require_github_repository(self, requested_repository: str) -> str:
+        """Require network and GitHub opt-ins plus an exact repository allowlist match."""
+
+        self.require_integration("external_network")
+        self.require_integration("github")
+        return self.github.require_repository(requested_repository)
 
 
 class GitRepositoryAuthorizer:
@@ -241,3 +254,22 @@ class GitRepositoryAuthorizer:
                 remediation="Add the exact repository path to git.approved_repositories.",
             )
         return canonical
+
+
+class GitHubRepositoryAuthorizer:
+    """Authorize only exact case-insensitive GitHub owner/repository identifiers."""
+
+    def __init__(self, settings: GitHubSettings) -> None:
+        self._repositories = {
+            repository.casefold(): repository for repository in settings.approved_repositories
+        }
+
+    def require_repository(self, requested_repository: str) -> str:
+        candidate = requested_repository.strip().casefold()
+        if candidate not in self._repositories:
+            raise ToolboxError(
+                ErrorCategory.PERMISSION_DENIED,
+                "GitHub repository access was denied by the active policy.",
+                remediation="Add the exact owner/repository name to github.approved_repositories.",
+            )
+        return self._repositories[candidate]

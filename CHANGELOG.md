@@ -5,6 +5,10 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
 
 ## Unreleased
 
+- Add an opt-in read-only GitHub integration for allowlisted repository,
+  issue, and pull-request metadata through bounded API requests.
+- Require separate GitHub, external-network, and exact repository allowlist
+  authorization before any GitHub request is made.
 - Combine the pending checkout, Python setup, and artifact upload updates to
   version 7, plus the reviewed development and optional dependency ranges.
 - Clarify the README, installation steps, manual startup behavior, and client

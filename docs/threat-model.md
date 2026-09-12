@@ -13,6 +13,7 @@ The protected assets are the host filesystem, credentials, Docker/Kubernetes con
 | Docker privilege escalation | Container sees `/var/run/docker.sock` | Socket is opt-in; document proxy approach; no destructive tools | A Docker API reader may still reveal sensitive metadata. |
 | Command injection | Scanner input adds `; rm -rf` | No shell; fixed binary/argument templates and parameter validation | External scanners themselves must be trusted and patched. |
 | Token exposure | HTTP error echoes an authorization header | Secret-free errors, header redaction, read-only tokens | Users must store tokens outside repository/config commits. |
+| Remote target injection | Repository input supplies an attacker-controlled URL | Fixed GitHub API origin plus validated exact repository allowlist | Operators must review every approved remote repository. |
 | Oversized input / ReDoS | Multi-GB log or pathological regex | File/output/time limits; safe search strategy; test regressions | Resource limits must match host capacity. |
 | Remote exposure | HTTP server binds publicly without auth | Stdio default; future HTTP localhost-only plus authentication | Operators must not reverse-proxy an insecure service. |
 | Audit leakage | Raw result serialized to JSONL | Audit schema permits summaries only; redaction count not values | Audit storage permissions and retention remain operator duties. |

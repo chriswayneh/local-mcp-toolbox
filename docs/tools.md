@@ -62,6 +62,26 @@ git:
     - C:\\absolute\\path\\to\\approved-project
 ```
 
+## GitHub
+
+| Tool | Inputs | Output | Safety controls |
+| --- | --- | --- | --- |
+| `github_repository_summary` | Exact approved `owner/repository` | Visibility, lifecycle, branch, issue-count, license, topic, and activity metadata | Requires GitHub and external-network opt-ins plus an exact repository allowlist. |
+| `github_recent_issues` | Approved repository, optional bounded `limit`, state | Issue number, title, state, author, labels, timestamps, and URL | Filters pull requests from the issues endpoint; bodies and comments are never returned. |
+| `github_recent_pull_requests` | Approved repository, optional bounded `limit`, state | Pull-request number, title, state, refs, author, timestamps, and URL | Returns metadata only; patches, diffs, comments, and file contents are excluded. |
+
+GitHub uses a fixed `https://api.github.com` origin, bounded `GET` requests, the global timeout and output limits, and central redaction. It never accepts a configurable URL or exposes mutation methods. Public repositories work without authentication; set `GITHUB_TOKEN` in the server environment for private repositories or higher API limits. The token is sent only as an authorization header and is never returned or logged.
+
+```yaml
+profile: standard
+integrations:
+  github: true
+  external_network: true
+github:
+  approved_repositories:
+    - owner/repository
+```
+
 ## Docker
 
 | Tool | Inputs | Output | Safety controls |

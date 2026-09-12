@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -76,6 +77,28 @@ class GitSettings(BaseModel):
     approved_repositories: list[Path] = Field(default_factory=list)
 
 
+_GITHUB_REPOSITORY = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})/[A-Za-z0-9_.-]{1,100}$")
+
+
+class GitHubSettings(BaseModel):
+    """Exact repository allowlist for the read-only GitHub integration."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    approved_repositories: frozenset[str] = Field(default_factory=frozenset)
+
+    @field_validator("approved_repositories", mode="before")
+    @classmethod
+    def validate_repositories(cls, value: list[str]) -> frozenset[str]:
+        repositories: set[str] = set()
+        for repository in value:
+            candidate = repository.strip()
+            if not _GITHUB_REPOSITORY.fullmatch(candidate):
+                raise ValueError("GitHub repositories must use the owner/repository format")
+            repositories.add(candidate)
+        return frozenset(repositories)
+
+
 class LogSettings(FilesystemSettings):
     """Explicit approved roots and limits for the local log-inspection module."""
 
@@ -135,6 +158,7 @@ class ToolboxSettings(BaseModel):
     filesystem: FilesystemSettings = Field(default_factory=FilesystemSettings)
     integrations: IntegrationSettings = Field(default_factory=IntegrationSettings)
     git: GitSettings = Field(default_factory=GitSettings)
+    github: GitHubSettings = Field(default_factory=GitHubSettings)
     logs: LogSettings = Field(default_factory=LogSettings)
     security: SecuritySettings = Field(default_factory=SecuritySettings)
     infrastructure: InfrastructureSettings = Field(default_factory=InfrastructureSettings)
@@ -148,8 +172,14 @@ class ToolboxSettings(BaseModel):
         if self.profile is PermissionProfile.RESTRICTED and self.integrations.enabled_names():
             enabled = ", ".join(sorted(self.integrations.enabled_names()))
             raise ValueError(f"restricted profile cannot enable integrations: {enabled}")
-        if self.integrations.external_ai and not self.integrations.external_network:
-            raise ValueError("external_ai requires explicit external_network enablement")
+        network_integrations = {
+            name for name in ("github", "external_ai") if getattr(self.integrations, name)
+        }
+        if network_integrations and not self.integrations.external_network:
+            enabled = ", ".join(sorted(network_integrations))
+            raise ValueError(f"network integrations require external_network: {enabled}")
+        if self.integrations.github and not self.github.approved_repositories:
+            raise ValueError("github requires at least one approved repository")
         return self
 
 
