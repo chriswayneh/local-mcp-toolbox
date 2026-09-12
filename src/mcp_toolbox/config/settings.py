@@ -62,6 +62,7 @@ class IntegrationSettings(BaseModel):
     incident: bool = False
     github: bool = False
     kubernetes: bool = False
+    ollama: bool = False
     external_network: bool = False
     external_ai: bool = False
 
@@ -82,6 +83,7 @@ _KUBERNETES_CONTEXT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,252}$")
 _KUBERNETES_NAMESPACE = re.compile(
     r"^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?(?:\.[a-z0-9](?:[-a-z0-9]*[a-z0-9])?)*$"
 )
+_OLLAMA_MODEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$")
 
 
 class GitHubSettings(BaseModel):
@@ -129,6 +131,25 @@ class KubernetesSettings(BaseModel):
         ):
             raise ValueError("Kubernetes namespaces must be valid DNS names")
         return frozenset(namespaces)
+
+
+class OllamaSettings(BaseModel):
+    """Fixed-loopback Ollama endpoint and exact model allowlist."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    host: str = Field(default="127.0.0.1", pattern=r"^127\.0\.0\.1$")
+    port: int = Field(default=11_434, ge=1, le=65_535)
+    approved_models: frozenset[str] = Field(default_factory=frozenset)
+    max_prompt_chars: int = Field(default=8_000, ge=1, le=100_000)
+
+    @field_validator("approved_models", mode="before")
+    @classmethod
+    def validate_models(cls, value: list[str]) -> frozenset[str]:
+        models = {model.strip() for model in value}
+        if any(not _OLLAMA_MODEL.fullmatch(model) for model in models):
+            raise ValueError("Ollama model names contain unsupported characters")
+        return frozenset(models)
 
 
 class LogSettings(FilesystemSettings):
@@ -192,6 +213,7 @@ class ToolboxSettings(BaseModel):
     git: GitSettings = Field(default_factory=GitSettings)
     github: GitHubSettings = Field(default_factory=GitHubSettings)
     kubernetes: KubernetesSettings = Field(default_factory=KubernetesSettings)
+    ollama: OllamaSettings = Field(default_factory=OllamaSettings)
     logs: LogSettings = Field(default_factory=LogSettings)
     security: SecuritySettings = Field(default_factory=SecuritySettings)
     infrastructure: InfrastructureSettings = Field(default_factory=InfrastructureSettings)
@@ -207,7 +229,7 @@ class ToolboxSettings(BaseModel):
             raise ValueError(f"restricted profile cannot enable integrations: {enabled}")
         network_integrations = {
             name
-            for name in ("github", "kubernetes", "external_ai")
+            for name in ("github", "kubernetes", "ollama", "external_ai")
             if getattr(self.integrations, name)
         }
         if network_integrations and not self.integrations.external_network:
@@ -219,6 +241,10 @@ class ToolboxSettings(BaseModel):
             not self.kubernetes.approved_contexts or not self.kubernetes.approved_namespaces
         ):
             raise ValueError("kubernetes requires approved contexts and namespaces")
+        if self.integrations.ollama and not self.integrations.external_ai:
+            raise ValueError("ollama requires explicit external_ai enablement")
+        if self.integrations.ollama and not self.ollama.approved_models:
+            raise ValueError("ollama requires at least one approved model")
         return self
 
 

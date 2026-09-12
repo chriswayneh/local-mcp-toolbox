@@ -7,6 +7,7 @@ from pathlib import Path
 
 from mcp_toolbox.audit import JsonlAuditLogger
 from mcp_toolbox.config import ToolboxSettings, load_settings
+from mcp_toolbox.metrics import MetricsRegistry
 from mcp_toolbox.permissions import PermissionService
 from mcp_toolbox.redaction import Redactor
 
@@ -19,6 +20,7 @@ class ServerRuntime:
     permissions: PermissionService
     redactor: Redactor
     audit: JsonlAuditLogger
+    metrics: MetricsRegistry
 
 
 def build_runtime(settings: ToolboxSettings) -> ServerRuntime:
@@ -27,7 +29,8 @@ def build_runtime(settings: ToolboxSettings) -> ServerRuntime:
     permissions = PermissionService(settings)
     redactor = Redactor(settings.redaction)
     audit = JsonlAuditLogger(settings.audit.path, redactor, settings.audit.retention_days)
-    return ServerRuntime(settings, permissions, redactor, audit)
+    metrics = MetricsRegistry()
+    return ServerRuntime(settings, permissions, redactor, audit, metrics)
 
 
 def load_runtime(config_path: Path) -> ServerRuntime:

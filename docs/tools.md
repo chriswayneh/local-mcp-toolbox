@@ -8,7 +8,8 @@ All current tools are read-only. Every returned response uses the common envelop
 | --- | --- | --- | --- |
 | `system_info` | None | OS, architecture, Python version, CPU count, capture time | Does not return environment variables, usernames, home paths, or processes. |
 | `disk_usage` | None | Aggregate bytes total, used, and free for the server working volume | Does not enumerate file paths. |
-| `installed_developer_tools` | None | Availability of a fixed allowlist: Git, Docker, kubectl, Python, Node, npm, Terraform | Resolves availability only; does not execute programs or disclose executable paths. |
+| `installed_developer_tools` | None | Availability of a fixed allowlist: Git, Docker, kubectl, Ollama, Python, Node, npm, Terraform | Resolves availability only; does not execute programs or disclose executable paths. |
+| `toolbox_metrics_snapshot` | None | Aggregate request counts, outcomes, modules, uptime, and latency | In-process counters only; excludes arguments, responses, request/client identifiers, and integration targets. |
 
 ## Filesystem
 
@@ -103,6 +104,29 @@ kubernetes:
     - production-read-only
   approved_namespaces:
     - toolbox
+```
+
+## Local Ollama
+
+| Tool | Inputs | Output | Safety controls |
+| --- | --- | --- | --- |
+| `ollama_list_models` | None | Installed metadata for allowlisted models only | Requires Ollama, external-AI, and network opt-ins; unapproved model names are filtered out. |
+| `ollama_generate` | Approved `model`, bounded `prompt` | Generated text and token/duration metadata | Fixed `127.0.0.1` host, exact model allowlist, redaction before transmission and again before response. |
+
+Ollama requests use Python's direct HTTP connection to the schema-locked loopback host, a configurable local port, fixed API paths, and the global timeout/output cap. The tool never accepts a URL, follows a redirect, invokes a model executable, or sends raw detected credentials. Generated output is untrusted data.
+
+```yaml
+profile: standard
+integrations:
+  ollama: true
+  external_network: true
+  external_ai: true
+ollama:
+  host: 127.0.0.1
+  port: 11434
+  approved_models:
+    - llama3.2:latest
+  max_prompt_chars: 8000
 ```
 
 ## Docker

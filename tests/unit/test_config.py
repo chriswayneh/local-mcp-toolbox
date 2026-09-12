@@ -129,3 +129,44 @@ def test_kubernetes_rejects_invalid_namespace(tmp_path: Path) -> None:
         build_runtime(load_settings(config))
 
     assert raised.value.category is ErrorCategory.CONFIGURATION_ERROR
+
+
+def test_ollama_requires_network_ai_and_model_allowlist(tmp_path: Path) -> None:
+    missing_ai = tmp_path / "missing-ai.yml"
+    missing_ai.write_text(
+        "profile: standard\nintegrations:\n  ollama: true\n  external_network: true\n"
+        "ollama:\n  approved_models: [llama3.2:latest]\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ToolboxError) as raised:
+        build_runtime(load_settings(missing_ai))
+
+    assert raised.value.category is ErrorCategory.CONFIGURATION_ERROR
+
+    missing_models = tmp_path / "missing-models.yml"
+    missing_models.write_text(
+        "profile: standard\nintegrations:\n  ollama: true\n  external_network: true\n"
+        "  external_ai: true\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ToolboxError) as raised:
+        build_runtime(load_settings(missing_models))
+
+    assert raised.value.category is ErrorCategory.CONFIGURATION_ERROR
+
+
+def test_ollama_rejects_non_loopback_host(tmp_path: Path) -> None:
+    config = tmp_path / "invalid.yml"
+    config.write_text(
+        "profile: standard\nintegrations:\n  ollama: true\n  external_network: true\n"
+        "  external_ai: true\nollama:\n  host: 0.0.0.0\n"
+        "  approved_models: [llama3.2:latest]\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ToolboxError) as raised:
+        build_runtime(load_settings(config))
+
+    assert raised.value.category is ErrorCategory.CONFIGURATION_ERROR

@@ -11,6 +11,10 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
   authorization before any GitHub request is made.
 - Add metadata-only Kubernetes cluster, namespace, pod, and deployment tools
   using the official SDK, bounded reads, and exact context/namespace allowlists.
+- Add fixed-loopback Ollama model inventory and generation with exact model
+  allowlists, bounded prompts, and mandatory pre-transmission redaction.
+- Add thread-safe, content-free aggregate request and latency metrics populated
+  through the existing audit middleware.
 - Combine the pending checkout, Python setup, and artifact upload updates to
   version 7, plus the reviewed development and optional dependency ranges.
 - Clarify the README, installation steps, manual startup behavior, and client

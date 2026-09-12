@@ -67,7 +67,9 @@
 
 - [x] Read-only GitHub integration
 - [x] Read-only Kubernetes integration
-- [ ] Local Ollama provider, metrics, authenticated localhost HTTP
+- [x] Local Ollama provider
+- [x] Aggregate runtime metrics
+- [ ] Authenticated localhost HTTP
 
 ## Version 2.0: Operations Intelligence
 

@@ -31,3 +31,7 @@ Docker socket access is equivalent to high host privilege in many deployments. C
 GitHub inspection requires the GitHub integration, external-network access, and an exact case-insensitive `owner/repository` allowlist. Requests use `GET` only against the fixed `https://api.github.com` origin. Tokens are read from `GITHUB_TOKEN`, used only as an authorization header, and excluded from responses and audit records.
 
 Kubernetes inspection requires separate integration and external-network opt-ins plus exact, case-sensitive context and namespace allowlists. The official SDK creates an isolated client from kubeconfig for the approved context and sends bounded read requests with the configured timeout. Tools omit secrets, annotations, labels, environment variables, volumes, commands, arguments, and pod logs.
+
+Ollama access requires Ollama, external-AI, and network opt-ins plus an exact model allowlist. The host is schema-locked to `127.0.0.1`; only the port is configurable. Prompts are character-bounded and centrally redacted before they cross the loopback connection. Responses are byte-bounded and redacted again before they reach the client.
+
+Runtime metrics contain only aggregate counts and duration totals grouped by sanitized module and outcome. They never retain argument values, response content, request identifiers, client identifiers, filesystem paths, repository names, model prompts, or generated text.

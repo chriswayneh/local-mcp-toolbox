@@ -15,7 +15,16 @@ from mcp_types import ToolAnnotations
 from mcp_toolbox.server.runtime import ServerRuntime
 from mcp_toolbox.tools.common import bounded_response
 
-_DEVELOPER_TOOLS = ("git", "docker", "kubectl", "python", "node", "npm", "terraform")
+_DEVELOPER_TOOLS = (
+    "git",
+    "docker",
+    "kubectl",
+    "ollama",
+    "python",
+    "node",
+    "npm",
+    "terraform",
+)
 
 
 def register_system_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[str, ...]:

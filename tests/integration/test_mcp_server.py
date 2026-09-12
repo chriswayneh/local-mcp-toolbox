@@ -49,6 +49,7 @@ def test_in_memory_mcp_server_lists_safe_capabilities_and_audits_requests(tmp_pa
 
             assert {tool.name for tool in tools.tools} == {
                 "toolbox_server_status",
+                "toolbox_metrics_snapshot",
                 "system_info",
                 "disk_usage",
                 "installed_developer_tools",
@@ -73,6 +74,9 @@ def test_in_memory_mcp_server_lists_safe_capabilities_and_audits_requests(tmp_pa
             assert "untrusted" in prompt.messages[0].content.text
             assert tool_result.is_error is False
             assert tool_result.structured_content["data"]["transport"] == "stdio"
+            metrics_result = await client.call_tool("toolbox_metrics_snapshot")
+            assert metrics_result.is_error is False
+            assert metrics_result.structured_content["data"]["request_count"] >= 1
 
     asyncio.run(scenario())
 

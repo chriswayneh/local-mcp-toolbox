@@ -5,6 +5,7 @@ from mcp_toolbox.permissions.service import (
     GitHubRepositoryAuthorizer,
     GitRepositoryAuthorizer,
     KubernetesAuthorizer,
+    OllamaModelAuthorizer,
     PermissionDecision,
     PermissionService,
 )
@@ -14,6 +15,7 @@ __all__ = [
     "GitHubRepositoryAuthorizer",
     "GitRepositoryAuthorizer",
     "KubernetesAuthorizer",
+    "OllamaModelAuthorizer",
     "PermissionDecision",
     "PermissionService",
 ]

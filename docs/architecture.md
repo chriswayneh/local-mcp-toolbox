@@ -32,6 +32,7 @@ sequenceDiagram
 | Tool modules | Typed, narrow read-only data collection | No generic shell or mutation tool exists. |
 | Redaction service | Detect, replace, and fingerprint sensitive data | Original secret material is not returned or audited. |
 | Audit service | JSONL event records and retention | Stores sanitized summaries, not raw tool content. |
+| Metrics registry | Aggregate request outcomes and latency | Stores counters only; no request content or identifiers. |
 | Configuration | Validated profile loading | Configuration cannot silently elevate access. |
 
 ## Module dependency and data flow
@@ -48,6 +49,7 @@ flowchart TB
   Redaction --> Contract["Safe response contract"]
   Contract --> Client
   Registry --> Audit["Sanitized audit service"]
+  Registry --> Metrics["Aggregate metrics registry"]
   Policy --> Audit
   Redaction --> Audit
 ```
@@ -65,7 +67,7 @@ The current MCP surface combines server-generated metadata with narrow read-only
 
 - `toolbox_server_status`: read-only server metadata; it never inspects the host.
 - System and approved-root filesystem inspection tools.
-- Exact-allowlist Git, GitHub, and Kubernetes inspection, opt-in Docker inspection, dedicated approved-root log inspection,
+- Exact-allowlist Git, GitHub, and Kubernetes inspection, fixed-loopback Ollama generation, opt-in Docker inspection, dedicated approved-root log inspection,
   fixed-command Bandit scanning, top-level infrastructure metadata inventory, and deterministic
   incident evidence extraction.
 - `toolbox://server/status`, `toolbox://configuration/summary`, `toolbox://security/policy`, and `toolbox://modules` resources.

@@ -15,6 +15,7 @@ integrations:
   incident: false
   github: false
   kubernetes: false
+  ollama: false
   external_network: false
   external_ai: false
 git:
@@ -24,6 +25,11 @@ github:
 kubernetes:
   approved_contexts: []
   approved_namespaces: []
+ollama:
+  host: 127.0.0.1
+  port: 11434
+  approved_models: []
+  max_prompt_chars: 8000
 logs:
   approved_roots: []
   allowed_extensions: [".log", ".txt", ".jsonl", ".out"]

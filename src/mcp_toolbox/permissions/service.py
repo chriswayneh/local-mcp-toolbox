@@ -11,6 +11,7 @@ from mcp_toolbox.config.settings import (
     GitHubSettings,
     GitSettings,
     KubernetesSettings,
+    OllamaSettings,
     ToolboxSettings,
 )
 from mcp_toolbox.models import ErrorCategory, ToolboxError
@@ -174,6 +175,7 @@ class PermissionService:
         self.git = GitRepositoryAuthorizer(settings.git)
         self.github = GitHubRepositoryAuthorizer(settings.github)
         self.kubernetes = KubernetesAuthorizer(settings.kubernetes)
+        self.ollama = OllamaModelAuthorizer(settings.ollama)
 
     def check_integration(self, integration: str) -> PermissionDecision:
         enabled = self.settings.integrations.model_dump().get(integration)
@@ -216,6 +218,14 @@ class PermissionService:
         self.require_integration("external_network")
         self.require_integration("kubernetes")
         return self.kubernetes.require_scope(context, namespace)
+
+    def require_ollama_model(self, model: str) -> str:
+        """Require network, AI, and Ollama opt-ins plus an exact model allowlist."""
+
+        self.require_integration("external_network")
+        self.require_integration("external_ai")
+        self.require_integration("ollama")
+        return self.ollama.require_model(model)
 
 
 class GitRepositoryAuthorizer:
@@ -299,3 +309,19 @@ class KubernetesAuthorizer:
                 remediation=("Add the exact context and namespace to the Kubernetes allowlists."),
             )
         return context, namespace
+
+
+class OllamaModelAuthorizer:
+    """Authorize only exact case-sensitive local model names."""
+
+    def __init__(self, settings: OllamaSettings) -> None:
+        self._models = settings.approved_models
+
+    def require_model(self, model: str) -> str:
+        if model not in self._models:
+            raise ToolboxError(
+                ErrorCategory.PERMISSION_DENIED,
+                "Ollama model access was denied by the active policy.",
+                remediation="Add the exact model name to ollama.approved_models.",
+            )
+        return model
