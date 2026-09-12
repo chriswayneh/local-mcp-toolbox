@@ -10,6 +10,7 @@ from mcp.server.context import HandlerResult, ServerRequestContext
 from pydantic import ValidationError
 
 from mcp_toolbox.audit import AuditEvent, AuditTimer, JsonlAuditLogger
+from mcp_toolbox.metrics import MetricsRegistry
 from mcp_toolbox.models import ErrorCategory, ToolboxError
 
 CallNext = Callable[[ServerRequestContext[Any, Any]], Awaitable[HandlerResult]]
@@ -18,8 +19,9 @@ CallNext = Callable[[ServerRequestContext[Any, Any]], Awaitable[HandlerResult]]
 class AuditMiddleware:
     """Record every MCP request after the SDK has handled it."""
 
-    def __init__(self, audit: JsonlAuditLogger) -> None:
+    def __init__(self, audit: JsonlAuditLogger, metrics: MetricsRegistry) -> None:
         self._audit = audit
+        self._metrics = metrics
 
     async def __call__(
         self,
@@ -54,6 +56,7 @@ class AuditMiddleware:
             raise
         finally:
             tool_name, tool_module = self._audit_identity(context.method, context.params)
+            duration_ms = timer.elapsed_ms()
             self._audit.record(
                 AuditEvent(
                     request_id=str(context.request_id),
@@ -61,13 +64,14 @@ class AuditMiddleware:
                     tool_module=tool_module,
                     input_summary=self._input_summary(context.params),
                     result_status=status,
-                    duration_ms=timer.elapsed_ms(),
+                    duration_ms=duration_ms,
                     client_identifier=self._client_identifier(context),
                     records_returned=self._records_returned(result) if "result" in locals() else 0,
                     error_category=category,
                     permission_decision=permission_decision,
                 )
             )
+            self._metrics.record(tool_module, status, duration_ms)
 
     @staticmethod
     def _audit_identity(method: str, params: Mapping[str, Any] | None) -> tuple[str, str]:
@@ -143,6 +147,7 @@ class AuditMiddleware:
         for name in (
             "entries",
             "records",
+            "packages",
             "findings",
             "matches",
             "commits",

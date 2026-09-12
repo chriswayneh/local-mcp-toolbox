@@ -9,7 +9,7 @@ from typing import Annotated
 import typer
 
 from mcp_toolbox.models import ToolboxError
-from mcp_toolbox.server import load_runtime, run_stdio
+from mcp_toolbox.server import load_runtime, run_http, run_stdio
 
 app = typer.Typer(
     name="local-mcp-toolbox",
@@ -42,6 +42,27 @@ def serve(
         typer.echo(f"{error.category}: {error.message}", err=True)
         raise typer.Exit(code=2) from error
     run_stdio(runtime)
+
+
+@app.command("serve-http")
+def serve_http(
+    config: Annotated[
+        Path,
+        typer.Option(
+            "--config",
+            "-c",
+            help="Path to the explicit permission configuration file.",
+        ),
+    ] = Path("config/default.yml"),
+) -> None:
+    """Start authenticated Streamable HTTP on the configured loopback address."""
+
+    try:
+        runtime = load_runtime(config)
+        run_http(runtime)
+    except ToolboxError as error:
+        typer.echo(f"{error.category}: {error.message}", err=True)
+        raise typer.Exit(code=2) from error
 
 
 @app.command()
@@ -93,6 +114,13 @@ def doctor(
             "detail": "not_enabled"
             if "security_scanners" not in integrations
             else "module_check_only",
+        },
+        {
+            "name": "environment",
+            "status": "pass" if "environment" in integrations else "skipped",
+            "detail": (
+                "filesystem_metadata_only" if "environment" in integrations else "not_enabled"
+            ),
         },
     ]
     typer.echo(

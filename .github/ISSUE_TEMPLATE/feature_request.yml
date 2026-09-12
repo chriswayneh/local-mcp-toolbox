@@ -20,6 +20,6 @@ body:
     id: security
     attributes:
       label: Security impact
-      description: Note filesystem, network, Docker, Kubernetes, AI-provider, or write-access implications.
+      description: Note filesystem, network, Docker, connected-service, or write-access implications.
     validations:
       required: true

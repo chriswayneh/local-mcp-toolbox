@@ -33,7 +33,7 @@ Use the core profile only when a client will attach to the container's standard 
 docker compose --profile core run --rm -i toolbox
 ```
 
-The container's standard output is reserved for the MCP protocol. Do not wrap it in an AI-exposed shell command.
+The container's standard output is reserved for the MCP protocol. Do not wrap it in a client-exposed shell command.
 
 ## Docker inspection through a socket proxy
 

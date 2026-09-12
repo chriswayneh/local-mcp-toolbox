@@ -53,7 +53,7 @@ not expand the server's own permissions.
 4. Start the client and verify `toolbox_server_status` before enabling further
    modules.
 
-Never configure an AI client with `config/default.yml` merely to avoid setup
+Never configure an MCP client with `config/default.yml` merely to avoid setup
 work.  Profiles are part of the authorization boundary, not presentation
 preferences.
 

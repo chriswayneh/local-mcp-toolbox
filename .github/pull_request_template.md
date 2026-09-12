@@ -12,5 +12,5 @@ Describe the user-visible and security impact.
 ## Security boundary review
 
 - [ ] This does not add generic command execution or a write operation.
-- [ ] New filesystem, network, Docker, Kubernetes, or AI-provider access is explicit, least-privilege, and documented.
+- [ ] New filesystem, network, Docker, or connected-service access is explicit, least-privilege, and documented.
 - [ ] An ADR and threat-model update are included if the access boundary expands.

@@ -9,8 +9,8 @@ your machine:
 
 | Placeholder | Windows example | macOS/Linux example |
 | --- | --- | --- |
-| `<TOOLBOX_EXE>` | `C:\\dev\\AI\\MCP Toolbox\\.venv\\Scripts\\local-mcp-toolbox.exe` | `/home/alex/local-mcp-toolbox/.venv/bin/local-mcp-toolbox` |
-| `<CONFIG_FILE>` | `C:\\dev\\AI\\MCP Toolbox\\config\\restricted.yml` | `/home/alex/local-mcp-toolbox/config/restricted.yml` |
+| `<TOOLBOX_EXE>` | `C:\\dev\\MCP Toolbox\\.venv\\Scripts\\local-mcp-toolbox.exe` | `/home/alex/local-mcp-toolbox/.venv/bin/local-mcp-toolbox` |
+| `<CONFIG_FILE>` | `C:\\dev\\MCP Toolbox\\config\\restricted.yml` | `/home/alex/local-mcp-toolbox/config/restricted.yml` |
 
 Start with `restricted.yml`.  It does not authorize project, Git, Docker, log,
 scanner, or infrastructure access.  To enable an inspection module, copy a

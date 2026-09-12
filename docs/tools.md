@@ -9,6 +9,7 @@ All current tools are read-only. Every returned response uses the common envelop
 | `system_info` | None | OS, architecture, Python version, CPU count, capture time | Does not return environment variables, usernames, home paths, or processes. |
 | `disk_usage` | None | Aggregate bytes total, used, and free for the server working volume | Does not enumerate file paths. |
 | `installed_developer_tools` | None | Availability of a fixed allowlist: Git, Docker, kubectl, Python, Node, npm, Terraform | Resolves availability only; does not execute programs or disclose executable paths. |
+| `toolbox_metrics_snapshot` | None | Aggregate request counts, outcomes, modules, uptime, and latency | In-process counters only; excludes arguments, responses, request/client identifiers, and integration targets. |
 
 ## Filesystem
 
@@ -60,6 +61,49 @@ integrations:
 git:
   approved_repositories:
     - C:\\absolute\\path\\to\\approved-project
+```
+
+## GitHub
+
+| Tool | Inputs | Output | Safety controls |
+| --- | --- | --- | --- |
+| `github_repository_summary` | Exact approved `owner/repository` | Visibility, lifecycle, branch, issue-count, license, topic, and activity metadata | Requires GitHub and external-network opt-ins plus an exact repository allowlist. |
+| `github_recent_issues` | Approved repository, optional bounded `limit`, state | Issue number, title, state, author, labels, timestamps, and URL | Filters pull requests from the issues endpoint; bodies and comments are never returned. |
+| `github_recent_pull_requests` | Approved repository, optional bounded `limit`, state | Pull-request number, title, state, refs, author, timestamps, and URL | Returns metadata only; patches, diffs, comments, and file contents are excluded. |
+
+GitHub uses a fixed `https://api.github.com` origin, bounded `GET` requests, the global timeout and output limits, and central redaction. It never accepts a configurable URL or exposes mutation methods. Public repositories work without authentication; set `GITHUB_TOKEN` in the server environment for private repositories or higher API limits. The token is sent only as an authorization header and is never returned or logged.
+
+```yaml
+profile: standard
+integrations:
+  github: true
+  external_network: true
+github:
+  approved_repositories:
+    - owner/repository
+```
+
+## Python Environments
+
+| Tool | Inputs | Output | Safety controls |
+| --- | --- | --- | --- |
+| `environment_audit_python_venv` | Absolute approved `environment_path`, optional bounded `limit` | Static environment facts, installed package identities, abnormal dependency findings, counts, warning codes, and completeness flags | Separate root allowlist, canonical containment, component link/junction rejection, race-aware bounded reads, central redaction, and no target execution. |
+
+The auditor opens only root `pyvenv.cfg` and exact immediate
+`.dist-info/METADATA` files in recognized Windows or POSIX layouts. It never
+launches Python or Pip, imports installed code, starts a shell, uses the network,
+or reads package source, `.pth`, activation, `RECORD`, or direct-URL files. A
+`no_detected_issues` result describes only the inspected static metadata; it is
+not a runtime-health or security claim. See the full
+[environment auditor contract](environment-auditor.md).
+
+```yaml
+profile: standard
+integrations:
+  environment: true
+environment:
+  approved_roots:
+    - C:\\absolute\\path\\to\\approved-projects
 ```
 
 ## Docker
@@ -162,4 +206,4 @@ incident:
     - C:\\absolute\\path\\to\\incident-logs
 ```
 
-No incident tool writes files, creates tickets, sends notifications, changes infrastructure, or invokes an AI provider.
+No incident tool writes files, creates tickets, sends notifications, or changes infrastructure.

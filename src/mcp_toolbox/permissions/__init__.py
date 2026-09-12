@@ -2,6 +2,7 @@
 
 from mcp_toolbox.permissions.service import (
     FilesystemAuthorizer,
+    GitHubRepositoryAuthorizer,
     GitRepositoryAuthorizer,
     PermissionDecision,
     PermissionService,
@@ -9,6 +10,7 @@ from mcp_toolbox.permissions.service import (
 
 __all__ = [
     "FilesystemAuthorizer",
+    "GitHubRepositoryAuthorizer",
     "GitRepositoryAuthorizer",
     "PermissionDecision",
     "PermissionService",

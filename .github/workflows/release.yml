@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Project version without the v prefix (for example 0.1.0)"
+        description: "Project version without the v prefix (for example 1.5.0)"
         required: true
         type: string
       confirmation:
@@ -13,33 +13,112 @@ on:
         type: string
 
 permissions:
-  contents: write
-  attestations: write
-  id-token: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.repository }}-${{ inputs.version }}
+  cancel-in-progress: false
 
 jobs:
-  publish:
-    if: ${{ inputs.confirmation == 'RELEASE' }}
+  build:
+    if: >-
+      ${{ inputs.confirmation == 'RELEASE' &&
+          github.ref == format('refs/tags/v{0}', inputs.version) }}
     runs-on: ubuntu-latest
-    environment: release
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    outputs:
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
+      release_commit: ${{ steps.release.outputs.release_commit }}
+      release_tag: ${{ steps.release.outputs.release_tag }}
+      release_tag_object: ${{ steps.release.outputs.release_tag_object }}
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
     steps:
+      - name: Validate release input format
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "${RELEASE_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([A-Za-z0-9.-]+)?$ ]]; then
+            echo "Release version must be a SemVer-shaped public version." >&2
+            exit 1
+          fi
+
       - name: Check out the requested release tag
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: v${{ inputs.version }}
+          ref: refs/tags/v${{ inputs.version }}
           fetch-depth: 0
-      - uses: actions/setup-python@v7
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
+
       - name: Install project and release tooling
-        run: python -m pip install -e ".[dev,docker,release]"
-      - name: Verify tag and package version agree
-        env:
-          RELEASE_VERSION: ${{ inputs.version }}
+        run: python -m pip install --disable-pip-version-check -e ".[dev,docker,release]"
+
+      - name: Verify annotated tag, protected-branch ancestry, and package version
+        id: release
+        shell: bash
         run: |
-          python -c "import os, tomllib; version = tomllib.load(open('pyproject.toml', 'rb'))['project']['version']; expected = os.environ['RELEASE_VERSION']; assert version == expected, f'pyproject.toml={version!r}; requested={expected!r}'"
-          git describe --exact-match --tags HEAD | grep -Fx "v${RELEASE_VERSION}"
+          set -euo pipefail
+          RELEASE_TAG="v${RELEASE_VERSION}"
+
+          python - <<'PY'
+          import os
+          import tomllib
+          from packaging.version import InvalidVersion, Version
+
+          requested_text = os.environ["RELEASE_VERSION"]
+          declared_text = tomllib.load(open("pyproject.toml", "rb"))["project"]["version"]
+          try:
+              requested = Version(requested_text)
+              declared = Version(declared_text)
+          except InvalidVersion as error:
+              raise SystemExit(f"Invalid release version: {error}") from error
+          if str(requested) != requested_text:
+              raise SystemExit(
+                  f"Requested version must be canonical: {requested_text!r} != {str(requested)!r}"
+              )
+          if declared != requested or declared_text != requested_text:
+              raise SystemExit(
+                  f"pyproject.toml={declared_text!r}; requested={requested_text!r}"
+              )
+          PY
+
+          test "$(git cat-file -t "refs/tags/${RELEASE_TAG}")" = "tag" || {
+            echo "${RELEASE_TAG} must be an annotated tag." >&2
+            exit 1
+          }
+          release_tag_object="$(git rev-parse "refs/tags/${RELEASE_TAG}^{tag}")"
+          release_commit="$(git rev-parse "refs/tags/${RELEASE_TAG}^{commit}")"
+          test "$(git rev-parse HEAD)" = "${release_commit}" || {
+            echo "Checked-out commit does not match ${RELEASE_TAG}." >&2
+            exit 1
+          }
+          test "${GITHUB_SHA}" = "${release_commit}" || {
+            echo "${RELEASE_TAG} must point to the commit that dispatched this workflow." >&2
+            exit 1
+          }
+          git show-ref --verify --quiet refs/remotes/origin/main || {
+            echo "origin/main was not fetched; ancestry cannot be established." >&2
+            exit 1
+          }
+          git merge-base --is-ancestor "${release_commit}" refs/remotes/origin/main || {
+            echo "${RELEASE_TAG} is not reachable from origin/main." >&2
+            exit 1
+          }
+
+          {
+            echo "release_commit=${release_commit}"
+            echo "release_tag=${RELEASE_TAG}"
+            echo "release_tag_object=${release_tag_object}"
+          } >> "${GITHUB_OUTPUT}"
+
       - name: Run release checks
         run: |
           python -m ruff format --check .
@@ -49,12 +128,172 @@ jobs:
           python -m bandit -q -r src
           python -m pip_audit
           python scripts/validate_docs.py
-      - name: Build distribution and SBOM
+
+      - name: Build distributions
+        run: python -m build --outdir release-dist
+
+      - name: Smoke-test the built wheel outside the repository
+        shell: bash
         run: |
-          python -m build
-          cyclonedx-py environment --output-file dist/sbom.cdx.json
-      - name: Create GitHub release from checked artifacts
+          set -euo pipefail
+          shopt -s nullglob
+          wheels=(release-dist/*.whl)
+          sdists=(release-dist/*.tar.gz)
+          test "${#wheels[@]}" -eq 1
+          test "${#sdists[@]}" -eq 1
+
+          wheel_path="$(realpath "${wheels[0]}")"
+          smoke_dir="$(mktemp -d)"
+          python -m venv "${smoke_dir}/venv"
+          "${smoke_dir}/venv/bin/python" -m pip install --disable-pip-version-check "${wheel_path}"
+          (
+            cd "${smoke_dir}"
+            env -u PYTHONPATH "${smoke_dir}/venv/bin/python" -c \
+              "import mcp_toolbox; assert mcp_toolbox.__version__ == '${RELEASE_VERSION}'"
+            env -u PYTHONPATH "${smoke_dir}/venv/bin/local-mcp-toolbox" --help >/dev/null
+          )
+
+          python -m cyclonedx_py environment "${smoke_dir}/venv/bin/python" \
+            --pyproject "${GITHUB_WORKSPACE}/pyproject.toml" \
+            --output-reproducible \
+            --output-file release-dist/sbom.cdx.json
+
+      - name: Hash and verify release artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          (
+            cd release-dist
+            sha256sum *.whl *.tar.gz sbom.cdx.json > SHA256SUMS
+            sha256sum --check SHA256SUMS
+          )
+
+      - name: Upload immutable release bundle
+        id: upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-bundle-${{ github.run_id }}
+          path: release-dist/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: release
+    permissions:
+      contents: write
+      attestations: write
+      artifact-metadata: write
+      id-token: write
+    env:
+      RELEASE_COMMIT: ${{ needs.build.outputs.release_commit }}
+      RELEASE_TAG: ${{ needs.build.outputs.release_tag }}
+      RELEASE_TAG_OBJECT: ${{ needs.build.outputs.release_tag_object }}
+    steps:
+      - name: Download the exact build artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact_id }}
+          path: release-artifacts
+          merge-multiple: true
+          digest-mismatch: error
+
+      - name: Verify artifact checksums and expected distribution set
+        shell: bash
+        run: |
+          set -euo pipefail
+          (
+            cd release-artifacts
+            sha256sum --check SHA256SUMS
+            shopt -s nullglob
+            entries=(*)
+            wheels=(*.whl)
+            sdists=(*.tar.gz)
+            test "${#entries[@]}" -eq 4
+            test "${#wheels[@]}" -eq 1
+            test "${#sdists[@]}" -eq 1
+            test -s sbom.cdx.json
+            test -s SHA256SUMS
+          )
+
+      - name: Verify the release tag has not moved
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_VERSION: ${{ inputs.version }}
-        run: gh release create "v${RELEASE_VERSION}" dist/* --title "v${RELEASE_VERSION}" --generate-notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote_tag_object="$(
+            gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" --jq '.object.sha'
+          )"
+          test "${remote_tag_object}" = "${RELEASE_TAG_OBJECT}" || {
+            echo "${RELEASE_TAG} changed after the build; refusing to publish." >&2
+            exit 1
+          }
+          comparison_status="$(
+            gh api "repos/${GITHUB_REPOSITORY}/compare/${RELEASE_COMMIT}...main" --jq '.status'
+          )"
+          case "${comparison_status}" in
+            ahead|identical) ;;
+            *)
+              echo "${RELEASE_COMMIT} is no longer reachable from main." >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Attest release build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            release-artifacts/*.whl
+            release-artifacts/*.tar.gz
+            release-artifacts/sbom.cdx.json
+            release-artifacts/SHA256SUMS
+
+      - name: Attest the SBOM to both distributions
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            release-artifacts/*.whl
+            release-artifacts/*.tar.gz
+          sbom-path: release-artifacts/sbom.cdx.json
+
+      - name: Create GitHub release from verified artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote_tag_object="$(
+            gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" --jq '.object.sha'
+          )"
+          test "${remote_tag_object}" = "${RELEASE_TAG_OBJECT}" || {
+            echo "${RELEASE_TAG} changed before release creation; refusing to publish." >&2
+            exit 1
+          }
+          comparison_status="$(
+            gh api "repos/${GITHUB_REPOSITORY}/compare/${RELEASE_COMMIT}...main" --jq '.status'
+          )"
+          case "${comparison_status}" in
+            ahead|identical) ;;
+            *)
+              echo "${RELEASE_COMMIT} is no longer reachable from main." >&2
+              exit 1
+              ;;
+          esac
+          if gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "Release ${RELEASE_TAG} already exists; refusing to overwrite it." >&2
+            exit 1
+          fi
+          gh release create "${RELEASE_TAG}" \
+            release-artifacts/*.whl \
+            release-artifacts/*.tar.gz \
+            release-artifacts/sbom.cdx.json \
+            release-artifacts/SHA256SUMS \
+            --repo "${GITHUB_REPOSITORY}" \
+            --target "${RELEASE_COMMIT}" \
+            --title "${RELEASE_TAG}" \
+            --generate-notes \
+            --verify-tag
