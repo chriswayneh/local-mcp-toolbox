@@ -2,6 +2,13 @@
 
 ## Run locally
 
+Download the repository and open its directory first:
+
+```powershell
+git clone https://github.com/chriswayneh/local-mcp-toolbox.git
+Set-Location local-mcp-toolbox
+```
+
 Create a local virtual environment, install the project, and start the default restrictive profile:
 
 ```powershell
@@ -10,6 +17,11 @@ python -m venv .venv
 .\.venv\Scripts\local-mcp-toolbox doctor --config config\restricted.yml
 .\.venv\Scripts\local-mcp-toolbox serve --config config\restricted.yml
 ```
+
+The last command starts a foreground process that waits for MCP messages. It
+does not open a web page. Press Ctrl+C to end this manual check, then follow
+[client configuration](client-configuration.md) so your AI client can start it.
+On macOS or Linux, use the [README commands](../README.md#macos--linux).
 
 The stdio process must reserve standard output for MCP protocol messages. Operator errors are written to standard error; do not wrap the command in a shell tool exposed to an AI client.
 
@@ -71,4 +83,4 @@ logs:
     - C:\\absolute\\path\\to\\application-logs
 ```
 
-Log searches are literal strings only—user-provided regular expressions are never executed. Responses are bounded and redacted, and error summaries report observed lines and groups rather than asserting a root cause.
+Log searches are literal strings only: user-provided regular expressions are never executed. Responses are bounded and redacted, and error summaries report observed lines and groups rather than asserting a root cause.

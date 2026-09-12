@@ -3,6 +3,13 @@
 All notable changes to Local MCP Toolbox are documented here. The project uses
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+- Combine the pending checkout, Python setup, and artifact upload updates to
+  version 7, plus the reviewed development and optional dependency ranges.
+- Clarify the README, installation steps, manual startup behavior, and client
+  connection process. Keep zero trust and least privilege explicit.
+
 ## [1.0.0] - 2026-08-13
 
 First stable release of the secure, local-first, read-only MCP toolbox.

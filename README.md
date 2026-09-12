@@ -2,9 +2,9 @@
 
 # Local MCP Toolbox
 
-### Secure, local-first visibility for AI-assisted development—without unrestricted machine access.
+### Let your AI assistant inspect the local tools and files you approve.
 
-A read-only [Model Context Protocol](https://modelcontextprotocol.io/) server that gives AI clients narrowly scoped, auditable access to developer-environment signals: system metadata, approved files, repositories, logs, containers, scanners, and incident evidence.
+A local [Model Context Protocol](https://modelcontextprotocol.io/) server for checking files, Git changes, application logs, and container health through your AI client. You choose what it can inspect. The toolbox checks permissions, redacts sensitive output, and records an audit trail.
 
 [![Release](https://img.shields.io/github/v/release/chriswayneh/local-mcp-toolbox?display_name=tag&sort=semver)](https://github.com/chriswayneh/local-mcp-toolbox/releases)
 [![Python](https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
@@ -13,7 +13,7 @@ A read-only [Model Context Protocol](https://modelcontextprotocol.io/) server th
 [![License](https://img.shields.io/github/license/chriswayneh/local-mcp-toolbox)](LICENSE)
 [![Scope](https://img.shields.io/badge/scope-read--only-2E7D32)](docs/security-model.md)
 
-**Current release:** [v1.0.0](https://github.com/chriswayneh/local-mcp-toolbox/releases/tag/v1.0.0) — stable read-only core
+**Current release:** [v1.0.0](https://github.com/chriswayneh/local-mcp-toolbox/releases/tag/v1.0.0), stable read-only core
 
 [Quick Start](#quick-start) · [Tools](#what-you-get) · [Security](#security-by-design) · [How It Works](#how-it-works) · [Connect a Client](#connect-your-ai-client) · [Architecture](#architecture) · [Demo](#see-it-safely) · [Roadmap](ROADMAP.md) · [Contributing](CONTRIBUTING.md)
 
@@ -23,11 +23,11 @@ A read-only [Model Context Protocol](https://modelcontextprotocol.io/) server th
 
 ## What This Is
 
-AI assistants are useful when they can inspect the environment around a problem. A generic shell tool or unrestricted Docker socket, however, turns that useful visibility into a high-privilege control plane.
+I’m building Local MCP Toolbox for my own development and troubleshooting workflow. It gives an AI assistant a controlled way to inspect the information I would otherwise gather by hand.
 
-Local MCP Toolbox takes a different path: it exposes a small set of typed, read-only MCP tools behind explicit policy checks. An operator chooses the approved roots and integrations; the server validates the request, collects only bounded data, redacts sensitive material, records sanitized audit metadata, and returns structured evidence to the client.
+Use it to review changes in an approved repository, investigate recurring log errors, or check an unhealthy container. Each integration requires explicit configuration. Returned evidence helps you investigate; it does not establish a root cause by itself.
 
-The result is a practical way to connect MCP-capable clients to local developer signals without treating client access as host access.
+The exposed tools cannot edit your files, commit code, or restart containers. The server writes its own audit records. It runs locally and connects to your existing MCP client; there is no separate dashboard or bundled AI model.
 
 ## What You Get
 
@@ -40,7 +40,7 @@ The result is a practical way to connect MCP-capable clients to local developer 
 | Logs | Tails, literal search, and deterministic error grouping | Dedicated approved roots, output limits, and central redaction |
 | Security | Bandit availability and normalized scan findings | Fixed scanner invocation; no user-controlled command arguments or fixes |
 | Infrastructure | Project-type detection and top-level configuration inventory | Separate approved roots; no recursive content inspection |
-| Incidents | Timestamped evidence and deterministic summaries | Read-only, bounded observations—never root-cause claims |
+| Incidents | Timestamped evidence and deterministic summaries | Read-only, bounded observations: never root-cause claims |
 | Audit | Sanitized JSONL accountability trail | Shape-only request summaries, retention, and size limits |
 
 For parameters, output schemas, and every individual guardrail, see the full [tool catalog](docs/tools.md).
@@ -62,7 +62,6 @@ Set-Location local-mcp-toolbox
 python -m venv .venv
 .\.venv\Scripts\python -m pip install -e ".[dev,docker]"
 .\.venv\Scripts\local-mcp-toolbox doctor --config config\restricted.yml
-.\.venv\Scripts\local-mcp-toolbox serve --config config\restricted.yml
 ```
 
 ### macOS / Linux
@@ -73,14 +72,17 @@ cd local-mcp-toolbox
 python3 -m venv .venv
 .venv/bin/python -m pip install -e ".[dev,docker]"
 .venv/bin/local-mcp-toolbox doctor --config config/restricted.yml
-.venv/bin/local-mcp-toolbox serve --config config/restricted.yml
 ```
 
-`doctor` is a non-mutating preflight check. The server uses stdio; reserve standard output for MCP traffic and keep diagnostics on standard error. For a guided setup and policy configuration, see [getting started](docs/getting-started.md).
+`doctor` checks configuration and prerequisites without changing them. Review any reported issues, then [connect your AI client](#connect-your-ai-client) using the supplied template. The client starts the server when needed.
+
+For a manual startup check, run `local-mcp-toolbox serve --config config/restricted.yml` using the executable in your virtual environment. It waits for MCP messages and does not open a browser. Press Ctrl+C to stop it before letting your client start its own instance.
+
+The default profile has no approved file roots or optional integrations. Start by asking your client to call `toolbox_server_status`. Then follow [getting started](docs/getting-started.md) to grant only the access you need. The install above includes development and Docker support; Docker itself is optional and remains disabled until configured.
 
 ## Security by Design
 
-The security model is the product boundary, not a feature bolted on afterward.
+The design applies zero trust and least privilege: each request is checked against local policy, and integrations receive only the access you explicitly configure.
 
 | Control | Protection |
 | --- | --- |
@@ -90,9 +92,9 @@ The security model is the product boundary, not a feature bolted on afterward.
 | Fixed subprocesses | External binaries use fixed argument templates, `shell=False`, scrubbed environments, timeouts, and output caps. |
 | Central redaction | PEM blocks, credentials, cookies, authorization headers, connection strings, and optional privacy identifiers are redacted before output. |
 | Output bounds | File reads, collections, subprocess output, and responses are size-limited. |
-| Sanitized audit | Requests record safe metadata, actual outcomes, and redaction counts—not raw secrets or tool output. |
+| Sanitized audit | Requests record safe metadata, actual outcomes, and redaction counts. Raw secrets and tool output are excluded. |
 | Explicit integrations | Git, Docker, logs, scanners, infrastructure, and incident tools must be configured intentionally. |
-| Untrusted evidence | Retrieved files, logs, commit messages, and metadata are data—not instructions. |
+| Untrusted evidence | Retrieved files, logs, commit messages, and metadata are treated as untrusted data. |
 
 Read the [security model](docs/security-model.md), [threat model](docs/threat-model.md), and the security-focused [architecture decisions](docs/adr/) for the complete rationale.
 
@@ -108,7 +110,7 @@ Read the [security model](docs/security-model.md), [threat model](docs/threat-mo
 
 ## Connect Your AI Client
 
-The repository includes maintained stdio configuration templates for supported clients. Adding a client entry lets the client start the process—it does **not** grant the server broader permissions.
+The repository includes maintained stdio configuration templates for supported clients. Adding a client entry lets the client start the process: it does **not** grant the server broader permissions.
 
 | Client | Copy-ready template |
 | --- | --- |
