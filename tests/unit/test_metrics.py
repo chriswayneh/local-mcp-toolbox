@@ -14,7 +14,17 @@ def test_metrics_registry_aggregates_sanitized_counts() -> None:
     assert snapshot["request_count"] == 3
     assert snapshot["status_counts"] == {"denied": 1, "error": 1, "success": 1}
     assert snapshot["module_counts"]["filesystem"] == 2
-    assert snapshot["module_counts"]["x" * 100] == 1
+    assert snapshot["module_counts"]["unknown"] == 1
     assert snapshot["duration_ms_total"] == 14
     assert snapshot["duration_ms_max"] == 10
     assert snapshot["duration_ms_average"] == 4.67
+
+
+def test_metrics_registry_collapses_unknown_module_cardinality() -> None:
+    metrics = MetricsRegistry()
+
+    for index in range(20_000):
+        metrics.record(f"attacker_{index}", "success", 1)
+
+    snapshot = metrics.snapshot()
+    assert snapshot["module_counts"] == {"unknown": 20_000}

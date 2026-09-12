@@ -20,10 +20,10 @@ python -m venv .venv
 
 The last command starts a foreground process that waits for MCP messages. It
 does not open a web page. Press Ctrl+C to end this manual check, then follow
-[client configuration](client-configuration.md) so your AI client can start it.
+[client configuration](client-configuration.md) so your MCP client can start it.
 On macOS or Linux, use the [README commands](../README.md#macos--linux).
 
-The stdio process must reserve standard output for MCP protocol messages. Operator errors are written to standard error; do not wrap the command in a shell tool exposed to an AI client.
+The stdio process must reserve standard output for MCP protocol messages. Operator errors are written to standard error; do not wrap the command in a shell tool exposed to an MCP client.
 
 `doctor` is a non-mutating preflight command. It validates the configuration and reports audit-directory readiness plus prerequisite availability for enabled Git, Docker, and Bandit scanner modules. It does not contact Docker, run a scanner, or create audit directories.
 

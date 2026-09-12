@@ -19,7 +19,6 @@ _DEVELOPER_TOOLS = (
     "git",
     "docker",
     "kubectl",
-    "ollama",
     "python",
     "node",
     "npm",

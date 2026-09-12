@@ -8,6 +8,23 @@ from datetime import UTC, datetime
 from time import monotonic
 from typing import Any
 
+_KNOWN_MODULES = frozenset(
+    {
+        "docker",
+        "environment",
+        "filesystem",
+        "git",
+        "github",
+        "incident",
+        "infra",
+        "logs",
+        "protocol",
+        "security",
+        "server",
+        "system",
+    }
+)
+
 
 class MetricsRegistry:
     """Keep bounded aggregate counts only; never store request or response content."""
@@ -25,7 +42,7 @@ class MetricsRegistry:
     def record(self, module: str, status: str, duration_ms: int) -> None:
         """Record one sanitized aggregate request outcome."""
 
-        safe_module = module[:100]
+        safe_module = module if module in _KNOWN_MODULES else "unknown"
         safe_status = status if status in {"success", "error", "denied"} else "error"
         safe_duration = max(0, duration_ms)
         with self._lock:

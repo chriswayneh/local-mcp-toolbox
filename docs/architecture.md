@@ -26,7 +26,7 @@ sequenceDiagram
 
 | Component | Responsibility | Security invariant |
 | --- | --- | --- |
-| Transport | MCP stdio lifecycle | Stdio remains default; connected tool APIs are separately opt-in. |
+| Transport | MCP stdio and authenticated loopback HTTP lifecycle | Stdio remains default; HTTP is separately disabled and bearer-protected. |
 | Tool registry | Modular registration and capability discovery | Disabled modules are not registered. |
 | Permission service | Profile, root, integration, and operation decisions | Ambiguous requests are denied. |
 | Tool modules | Typed, narrow read-only data collection | No generic shell or mutation tool exists. |
@@ -61,13 +61,13 @@ before audit metadata is persisted.
 
 ## Current MCP surface
 
-Phase 3 supports stdio only. Startup first loads the explicit YAML profile, validates it, resolves approved roots, and composes the permission, redaction, and audit services. If validation fails, the CLI reports a safe configuration error on stderr and exits before the MCP protocol starts.
+Stdio remains the default transport. Version 1.5 also supports explicitly enabled, authenticated Streamable HTTP on a literal loopback address. Startup first loads the explicit YAML profile, validates it, resolves approved roots, and composes the permission, redaction, audit, and metrics services. Invalid policy or missing HTTP authentication material fails before the listener starts.
 
 The current MCP surface combines server-generated metadata with narrow read-only modules:
 
 - `toolbox_server_status`: read-only server metadata; it never inspects the host.
 - System and approved-root filesystem inspection tools.
-- Exact-allowlist Git, GitHub, and Kubernetes inspection, fixed-loopback Ollama generation, opt-in Docker inspection, dedicated approved-root log inspection,
+- Exact-allowlist Git and GitHub inspection, opt-in Docker inspection, dedicated approved-root log inspection,
   fixed-command Bandit scanning, static Python-environment metadata auditing,
   top-level infrastructure metadata inventory, and deterministic incident evidence extraction.
 - `toolbox://server/status`, `toolbox://configuration/summary`, `toolbox://security/policy`, and `toolbox://modules` resources.

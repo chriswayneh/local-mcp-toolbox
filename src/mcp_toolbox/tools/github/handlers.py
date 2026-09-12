@@ -7,7 +7,7 @@ import os
 from typing import Any, Literal, cast
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from mcp.server import MCPServer
 from mcp_types import ToolAnnotations
@@ -26,11 +26,19 @@ _READ_ONLY_EXTERNAL = ToolAnnotations(
 )
 
 
+class _RejectRedirects(HTTPRedirectHandler):
+    """Reject every redirect so credentials cannot cross an origin boundary."""
+
+    def redirect_request(self, *args: Any, **kwargs: Any) -> None:  # noqa: ANN401
+        return None
+
+
 class GitHubGateway:
     """Minimal GitHub REST adapter with no mutation methods or configurable host."""
 
     def __init__(self, runtime: ServerRuntime) -> None:
         self._runtime = runtime
+        self._opener = build_opener(_RejectRedirects())
 
     def request_json(self, path: str, query: dict[str, str | int] | None = None) -> Any:
         """Fetch one bounded JSON response from the fixed GitHub API origin."""
@@ -50,7 +58,7 @@ class GitHubGateway:
         )
         output_limit = self._runtime.settings.limits.max_output_bytes
         try:
-            with urlopen(  # noqa: S310  # nosec B310
+            with self._opener.open(  # noqa: S310  # nosec B310
                 request,
                 timeout=self._runtime.settings.limits.timeout_seconds,
             ) as response:
@@ -170,6 +178,12 @@ def _repository_path(repository: str) -> str:
 
 
 def _github_http_error(status: int) -> ToolboxError:
+    if 300 <= status < 400:
+        return ToolboxError(
+            ErrorCategory.INTEGRATION_UNAVAILABLE,
+            "GitHub returned a redirect that the fixed-origin policy rejected.",
+            remediation="Retry later or verify the GitHub API endpoint from a trusted network.",
+        )
     if status == 401:
         return ToolboxError(
             ErrorCategory.AUTHENTICATION_FAILED,

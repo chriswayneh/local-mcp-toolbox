@@ -66,15 +66,15 @@
 ## Version 1.5: Connected Integrations
 
 - [x] Read-only GitHub integration
-- [x] Read-only Kubernetes integration
-- [x] Local Ollama provider
 - [x] Aggregate runtime metrics
 - [x] Read-only Python virtual-environment metadata auditor
-- [ ] Authenticated localhost HTTP
+- [x] Authenticated localhost HTTP
+- [x] Remove integrations that cannot enforce the inspection-only contract
+- [x] Harden audit rotation and release provenance controls
 
-## Version 2.0: Operations Intelligence
+## Version 2.0: Operational Analysis
 
-- [ ] Correlation, AI-assisted narratives, architecture/runbook generation, optional dashboard
+- [ ] Deterministic correlation, architecture and runbook generation, optional dashboard
 
 ## Version 3.0: Controlled Actions
 

@@ -8,7 +8,7 @@ All current tools are read-only. Every returned response uses the common envelop
 | --- | --- | --- | --- |
 | `system_info` | None | OS, architecture, Python version, CPU count, capture time | Does not return environment variables, usernames, home paths, or processes. |
 | `disk_usage` | None | Aggregate bytes total, used, and free for the server working volume | Does not enumerate file paths. |
-| `installed_developer_tools` | None | Availability of a fixed allowlist: Git, Docker, kubectl, Ollama, Python, Node, npm, Terraform | Resolves availability only; does not execute programs or disclose executable paths. |
+| `installed_developer_tools` | None | Availability of a fixed allowlist: Git, Docker, kubectl, Python, Node, npm, Terraform | Resolves availability only; does not execute programs or disclose executable paths. |
 | `toolbox_metrics_snapshot` | None | Aggregate request counts, outcomes, modules, uptime, and latency | In-process counters only; excludes arguments, responses, request/client identifiers, and integration targets. |
 
 ## Filesystem
@@ -81,52 +81,6 @@ integrations:
 github:
   approved_repositories:
     - owner/repository
-```
-
-## Kubernetes
-
-| Tool | Inputs | Output | Safety controls |
-| --- | --- | --- | --- |
-| `kubernetes_cluster_version` | Approved `context` and `namespace` | Cluster Git version, platform, major, and minor version | Requires both values to be allowlisted before constructing an SDK client. |
-| `kubernetes_namespace_summary` | Approved context and namespace | Namespace phase and lifecycle timestamps | Omits labels, annotations, finalizers, managed fields, and resource contents. |
-| `kubernetes_list_pods` | Approved context and namespace, optional bounded `limit` | Pod name, phase, node, readiness, restarts, and creation time | Omits secrets, environment, volumes, commands, arguments, labels, annotations, and logs. |
-| `kubernetes_list_deployments` | Approved context and namespace, optional bounded `limit` | Deployment name and replica health metadata | Omits pod templates, environment, volumes, labels, annotations, and rollout mutation. |
-
-The Kubernetes integration uses the official Python SDK and creates an isolated client from the operator's existing kubeconfig. Every API call includes the global timeout and a bounded server-side result limit. Install it with `pip install -e ".[kubernetes]"` and grant the kubeconfig identity read-only RBAC permissions.
-
-```yaml
-profile: standard
-integrations:
-  kubernetes: true
-  external_network: true
-kubernetes:
-  approved_contexts:
-    - production-read-only
-  approved_namespaces:
-    - toolbox
-```
-
-## Local Ollama
-
-| Tool | Inputs | Output | Safety controls |
-| --- | --- | --- | --- |
-| `ollama_list_models` | None | Installed metadata for allowlisted models only | Requires Ollama, external-AI, and network opt-ins; unapproved model names are filtered out. |
-| `ollama_generate` | Approved `model`, bounded `prompt` | Generated text and token/duration metadata | Fixed `127.0.0.1` host, exact model allowlist, redaction before transmission and again before response. |
-
-Ollama requests use Python's direct HTTP connection to the schema-locked loopback host, a configurable local port, fixed API paths, and the global timeout/output cap. The tool never accepts a URL, follows a redirect, invokes a model executable, or sends raw detected credentials. Generated output is untrusted data.
-
-```yaml
-profile: standard
-integrations:
-  ollama: true
-  external_network: true
-  external_ai: true
-ollama:
-  host: 127.0.0.1
-  port: 11434
-  approved_models:
-    - llama3.2:latest
-  max_prompt_chars: 8000
 ```
 
 ## Python Environments
@@ -252,4 +206,4 @@ incident:
     - C:\\absolute\\path\\to\\incident-logs
 ```
 
-No incident tool writes files, creates tickets, sends notifications, changes infrastructure, or invokes an AI provider.
+No incident tool writes files, creates tickets, sends notifications, or changes infrastructure.

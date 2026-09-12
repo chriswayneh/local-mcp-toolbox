@@ -3,16 +3,12 @@
 All notable changes to Local MCP Toolbox are documented here. The project uses
 [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## [1.5.0] - 2026-09-12
 
 - Add an opt-in read-only GitHub integration for allowlisted repository,
   issue, and pull-request metadata through bounded API requests.
 - Require separate GitHub, external-network, and exact repository allowlist
   authorization before any GitHub request is made.
-- Add metadata-only Kubernetes cluster, namespace, pod, and deployment tools
-  using the official SDK, bounded reads, and exact context/namespace allowlists.
-- Add fixed-loopback Ollama model inventory and generation with exact model
-  allowlists, bounded prompts, and mandatory pre-transmission redaction.
 - Add thread-safe, content-free aggregate request and latency metrics populated
   through the existing audit middleware.
 - Add an opt-in Python virtual-environment auditor that reads only bounded
@@ -22,6 +18,15 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
   version 7, plus the reviewed development and optional dependency ranges.
 - Clarify the README, installation steps, manual startup behavior, and client
   connection process. Keep zero trust and least privilege explicit.
+- Remove Kubernetes inspection because kubeconfig credential providers can
+  execute commands or persist refreshed credentials outside the tool boundary.
+- Remove generation capabilities because they are not read-only inspection.
+- Collapse unknown metrics labels into a fixed bucket and apply the central
+  response-size boundary to metrics snapshots.
+- Reject every authenticated GitHub redirect to keep credentials bound to the
+  fixed API origin.
+- Add authenticated loopback HTTP with strict host, origin, token, session, and
+  request-size controls.
 
 ## [1.0.0] - 2026-08-13
 
@@ -52,4 +57,5 @@ First stable release of the secure, local-first, read-only MCP toolbox.
   represented through structured contracts.
 - GitHub private vulnerability reporting is enabled for confidential reports.
 
+[1.5.0]: https://github.com/chriswayneh/local-mcp-toolbox/compare/v1.0.0...v1.5.0
 [1.0.0]: https://github.com/chriswayneh/local-mcp-toolbox/releases/tag/v1.0.0

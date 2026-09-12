@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "local-mcp-toolbox"
-version = "1.0.0"
+version = "1.5.0"
 description = "Secure, local-first, read-only MCP tools for developer environment inspection."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -20,7 +20,7 @@ classifiers = [
   "Topic :: Security",
 ]
 dependencies = [
-  "mcp[cli]>=2.0,<3",
+  "mcp[cli]>=2.2,<3",
   "mcp-types>=2.0,<3",
   "packaging>=24,<27",
   "pydantic>=2.10,<3",
@@ -45,7 +45,6 @@ dev = [
   "types-PyYAML>=6.0.12",
 ]
 docker = ["docker>=7.1,<8"]
-kubernetes = ["kubernetes>=32,<37"]
 release = [
   "build>=1.2,<3",
   "cyclonedx-bom>=5,<8",

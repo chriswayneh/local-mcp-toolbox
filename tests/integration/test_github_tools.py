@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError
 
 import pytest
 from mcp import Client
@@ -14,6 +15,7 @@ from mcp_toolbox.config.settings import (
     PermissionProfile,
     ToolboxSettings,
 )
+from mcp_toolbox.models import ErrorCategory, ToolboxError
 from mcp_toolbox.server import build_runtime, create_server
 from mcp_toolbox.tools.github.handlers import GitHubGateway
 
@@ -133,3 +135,25 @@ def test_github_tools_are_not_registered_without_opt_in(tmp_path: Path) -> None:
             assert not {name for name in names if name.startswith("github_")}
 
     asyncio.run(scenario())
+
+
+def test_github_gateway_rejects_redirects(tmp_path: Path) -> None:
+    gateway = GitHubGateway(build_runtime(_github_settings(tmp_path / "audit.jsonl")))
+
+    class RedirectingOpener:
+        def open(self, request: object, timeout: int) -> None:
+            raise HTTPError(
+                "https://api.github.com/repos/Example/Project",
+                302,
+                "Found",
+                {"Location": "http://127.0.0.1:7777/capture"},
+                None,
+            )
+
+    gateway._opener = RedirectingOpener()  # type: ignore[assignment]
+
+    with pytest.raises(ToolboxError) as raised:
+        gateway.request_json("/repos/Example/Project")
+
+    assert raised.value.category is ErrorCategory.INTEGRATION_UNAVAILABLE
+    assert "redirect" in raised.value.message.lower()

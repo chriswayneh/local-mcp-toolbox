@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
@@ -61,11 +61,8 @@ class IntegrationSettings(BaseModel):
     infrastructure: bool = False
     incident: bool = False
     github: bool = False
-    kubernetes: bool = False
-    ollama: bool = False
     environment: bool = False
     external_network: bool = False
-    external_ai: bool = False
 
     def enabled_names(self) -> frozenset[str]:
         return frozenset(name for name, enabled in self.model_dump().items() if enabled)
@@ -80,11 +77,6 @@ class GitSettings(BaseModel):
 
 
 _GITHUB_REPOSITORY = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})/[A-Za-z0-9_.-]{1,100}$")
-_KUBERNETES_CONTEXT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,252}$")
-_KUBERNETES_NAMESPACE = re.compile(
-    r"^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?(?:\.[a-z0-9](?:[-a-z0-9]*[a-z0-9])?)*$"
-)
-_OLLAMA_MODEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$")
 
 
 class GitHubSettings(BaseModel):
@@ -104,53 +96,6 @@ class GitHubSettings(BaseModel):
                 raise ValueError("GitHub repositories must use the owner/repository format")
             repositories.add(candidate)
         return frozenset(repositories)
-
-
-class KubernetesSettings(BaseModel):
-    """Exact context and namespace allowlists for Kubernetes inspection."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    approved_contexts: frozenset[str] = Field(default_factory=frozenset)
-    approved_namespaces: frozenset[str] = Field(default_factory=frozenset)
-
-    @field_validator("approved_contexts", mode="before")
-    @classmethod
-    def validate_contexts(cls, value: list[str]) -> frozenset[str]:
-        contexts = {context.strip() for context in value}
-        if any(not _KUBERNETES_CONTEXT.fullmatch(context) for context in contexts):
-            raise ValueError("Kubernetes contexts contain unsupported characters")
-        return frozenset(contexts)
-
-    @field_validator("approved_namespaces", mode="before")
-    @classmethod
-    def validate_namespaces(cls, value: list[str]) -> frozenset[str]:
-        namespaces = {namespace.strip() for namespace in value}
-        if any(
-            len(namespace) > 253 or not _KUBERNETES_NAMESPACE.fullmatch(namespace)
-            for namespace in namespaces
-        ):
-            raise ValueError("Kubernetes namespaces must be valid DNS names")
-        return frozenset(namespaces)
-
-
-class OllamaSettings(BaseModel):
-    """Fixed-loopback Ollama endpoint and exact model allowlist."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    host: str = Field(default="127.0.0.1", pattern=r"^127\.0\.0\.1$")
-    port: int = Field(default=11_434, ge=1, le=65_535)
-    approved_models: frozenset[str] = Field(default_factory=frozenset)
-    max_prompt_chars: int = Field(default=8_000, ge=1, le=100_000)
-
-    @field_validator("approved_models", mode="before")
-    @classmethod
-    def validate_models(cls, value: list[str]) -> frozenset[str]:
-        models = {model.strip() for model in value}
-        if any(not _OLLAMA_MODEL.fullmatch(model) for model in models):
-            raise ValueError("Ollama model names contain unsupported characters")
-        return frozenset(models)
 
 
 class EnvironmentSettings(BaseModel):
@@ -223,6 +168,23 @@ class AuditSettings(BaseModel):
     retention_days: int = Field(default=30, ge=1, le=3_650)
 
 
+class HttpSettings(BaseModel):
+    """Authenticated loopback transport with fixed resource limits."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    host: Literal["127.0.0.1", "::1"] = "127.0.0.1"
+    port: int = Field(default=8_765, ge=1, le=65_535)
+    token_environment: str = Field(
+        default="LOCAL_MCP_TOOLBOX_HTTP_TOKEN",
+        pattern=r"^[A-Z_][A-Z0-9_]{0,127}$",
+    )
+    max_request_body_bytes: int = Field(default=262_144, ge=1_024, le=4_194_304)
+    session_idle_seconds: int = Field(default=300, ge=30, le=3_600)
+    max_sessions: int = Field(default=16, ge=1, le=256)
+
+
 class RedactionSettings(BaseModel):
     """Privacy controls for additional non-secret identifiers."""
 
@@ -243,8 +205,6 @@ class ToolboxSettings(BaseModel):
     integrations: IntegrationSettings = Field(default_factory=IntegrationSettings)
     git: GitSettings = Field(default_factory=GitSettings)
     github: GitHubSettings = Field(default_factory=GitHubSettings)
-    kubernetes: KubernetesSettings = Field(default_factory=KubernetesSettings)
-    ollama: OllamaSettings = Field(default_factory=OllamaSettings)
     environment: EnvironmentSettings = Field(default_factory=EnvironmentSettings)
     logs: LogSettings = Field(default_factory=LogSettings)
     security: SecuritySettings = Field(default_factory=SecuritySettings)
@@ -252,6 +212,7 @@ class ToolboxSettings(BaseModel):
     incident: IncidentSettings = Field(default_factory=IncidentSettings)
     limits: LimitSettings = Field(default_factory=LimitSettings)
     audit: AuditSettings = Field(default_factory=AuditSettings)
+    http: HttpSettings = Field(default_factory=HttpSettings)
     redaction: RedactionSettings = Field(default_factory=RedactionSettings)
 
     @model_validator(mode="after")
@@ -259,24 +220,12 @@ class ToolboxSettings(BaseModel):
         if self.profile is PermissionProfile.RESTRICTED and self.integrations.enabled_names():
             enabled = ", ".join(sorted(self.integrations.enabled_names()))
             raise ValueError(f"restricted profile cannot enable integrations: {enabled}")
-        network_integrations = {
-            name
-            for name in ("github", "kubernetes", "ollama", "external_ai")
-            if getattr(self.integrations, name)
-        }
+        network_integrations = {name for name in ("github",) if getattr(self.integrations, name)}
         if network_integrations and not self.integrations.external_network:
             enabled = ", ".join(sorted(network_integrations))
             raise ValueError(f"network integrations require external_network: {enabled}")
         if self.integrations.github and not self.github.approved_repositories:
             raise ValueError("github requires at least one approved repository")
-        if self.integrations.kubernetes and (
-            not self.kubernetes.approved_contexts or not self.kubernetes.approved_namespaces
-        ):
-            raise ValueError("kubernetes requires approved contexts and namespaces")
-        if self.integrations.ollama and not self.integrations.external_ai:
-            raise ValueError("ollama requires explicit external_ai enablement")
-        if self.integrations.ollama and not self.ollama.approved_models:
-            raise ValueError("ollama requires at least one approved model")
         if self.integrations.environment and not self.environment.approved_roots:
             raise ValueError("environment requires at least one approved root")
         return self

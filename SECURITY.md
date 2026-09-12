@@ -10,5 +10,6 @@ Include affected version/commit, reproduction steps, impact, and any suggested m
 
 | Version | Supported |
 | --- | --- |
+| 1.5.x | Yes |
 | 1.0.x | Yes |
 | Earlier prereleases | No |

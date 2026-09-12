@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from mcp_toolbox.config import PermissionProfile, load_settings
+from mcp_toolbox.config.settings import HttpSettings
 from mcp_toolbox.models import ErrorCategory, ToolboxError
 from mcp_toolbox.server import build_runtime
 
@@ -90,83 +91,13 @@ def test_github_repository_allowlist_rejects_invalid_names(tmp_path: Path) -> No
     assert raised.value.category is ErrorCategory.CONFIGURATION_ERROR
 
 
-def test_kubernetes_requires_network_and_exact_scope_allowlists(tmp_path: Path) -> None:
-    missing_network = tmp_path / "missing-network.yml"
-    missing_network.write_text(
-        "profile: standard\nintegrations:\n  kubernetes: true\n"
-        "kubernetes:\n  approved_contexts: [production]\n"
-        "  approved_namespaces: [toolbox]\n",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ToolboxError) as raised:
-        build_runtime(load_settings(missing_network))
-
-    assert raised.value.category is ErrorCategory.CONFIGURATION_ERROR
-
-    missing_scope = tmp_path / "missing-scope.yml"
-    missing_scope.write_text(
-        "profile: standard\nintegrations:\n  kubernetes: true\n  external_network: true\n",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ToolboxError) as raised:
-        build_runtime(load_settings(missing_scope))
-
-    assert raised.value.category is ErrorCategory.CONFIGURATION_ERROR
+@pytest.mark.parametrize("host", ["localhost", ".".join(["0"] * 4), "192.168.1.10"])
+def test_http_transport_rejects_nonliteral_loopback_hosts(host: str) -> None:
+    with pytest.raises(ValueError):
+        HttpSettings(host=host)  # type: ignore[arg-type]
 
 
-def test_kubernetes_rejects_invalid_namespace(tmp_path: Path) -> None:
-    config = tmp_path / "invalid.yml"
-    config.write_text(
-        "profile: standard\nintegrations:\n  kubernetes: true\n  external_network: true\n"
-        "kubernetes:\n  approved_contexts: [production]\n"
-        "  approved_namespaces: [Invalid_Namespace]\n",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ToolboxError) as raised:
-        build_runtime(load_settings(config))
-
-    assert raised.value.category is ErrorCategory.CONFIGURATION_ERROR
-
-
-def test_ollama_requires_network_ai_and_model_allowlist(tmp_path: Path) -> None:
-    missing_ai = tmp_path / "missing-ai.yml"
-    missing_ai.write_text(
-        "profile: standard\nintegrations:\n  ollama: true\n  external_network: true\n"
-        "ollama:\n  approved_models: [llama3.2:latest]\n",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ToolboxError) as raised:
-        build_runtime(load_settings(missing_ai))
-
-    assert raised.value.category is ErrorCategory.CONFIGURATION_ERROR
-
-    missing_models = tmp_path / "missing-models.yml"
-    missing_models.write_text(
-        "profile: standard\nintegrations:\n  ollama: true\n  external_network: true\n"
-        "  external_ai: true\n",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ToolboxError) as raised:
-        build_runtime(load_settings(missing_models))
-
-    assert raised.value.category is ErrorCategory.CONFIGURATION_ERROR
-
-
-def test_ollama_rejects_non_loopback_host(tmp_path: Path) -> None:
-    config = tmp_path / "invalid.yml"
-    config.write_text(
-        "profile: standard\nintegrations:\n  ollama: true\n  external_network: true\n"
-        "  external_ai: true\nollama:\n  host: 0.0.0.0\n"
-        "  approved_models: [llama3.2:latest]\n",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ToolboxError) as raised:
-        build_runtime(load_settings(config))
-
-    assert raised.value.category is ErrorCategory.CONFIGURATION_ERROR
+def test_http_transport_rejects_unsafe_token_environment_name() -> None:
+    invalid_name = "unsafe-name"
+    with pytest.raises(ValueError):
+        HttpSettings(token_environment=invalid_name)

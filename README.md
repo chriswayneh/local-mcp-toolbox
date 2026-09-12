@@ -2,9 +2,9 @@
 
 # Local MCP Toolbox
 
-### Let your AI assistant inspect the local tools and files you approve.
+### Inspect approved local systems through a strict zero-trust boundary.
 
-A local [Model Context Protocol](https://modelcontextprotocol.io/) server for checking files, Git changes, application logs, and container health through your AI client. You choose what it can inspect. The toolbox checks permissions, redacts sensitive output, and records an audit trail.
+A local [Model Context Protocol](https://modelcontextprotocol.io/) server for checking files, Git changes, application logs, container health, and Python environments. You choose what it can inspect. Every request is authorized, sensitive output is redacted, results are bounded, and activity is audited.
 
 [![Release](https://img.shields.io/github/v/release/chriswayneh/local-mcp-toolbox?display_name=tag&sort=semver)](https://github.com/chriswayneh/local-mcp-toolbox/releases)
 [![Python](https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
@@ -13,9 +13,9 @@ A local [Model Context Protocol](https://modelcontextprotocol.io/) server for ch
 [![License](https://img.shields.io/github/license/chriswayneh/local-mcp-toolbox)](LICENSE)
 [![Scope](https://img.shields.io/badge/scope-read--only-2E7D32)](docs/security-model.md)
 
-**Current release:** [v1.0.0](https://github.com/chriswayneh/local-mcp-toolbox/releases/tag/v1.0.0), stable read-only core
+**Current release:** v1.5.0 candidate, zero-trust read-only inspection
 
-[Quick Start](#quick-start) · [Tools](#what-you-get) · [Security](#security-by-design) · [How It Works](#how-it-works) · [Connect a Client](#connect-your-ai-client) · [Architecture](#architecture) · [Demo](#see-it-safely) · [Roadmap](ROADMAP.md) · [Contributing](CONTRIBUTING.md)
+[Quick Start](#quick-start) · [Tools](#what-you-get) · [Security](#security-by-design) · [How It Works](#how-it-works) · [Connect a Client](#connect-a-client) · [Architecture](#architecture) · [Demo](#see-it-safely) · [Roadmap](ROADMAP.md) · [Contributing](CONTRIBUTING.md)
 
 </div>
 
@@ -23,11 +23,11 @@ A local [Model Context Protocol](https://modelcontextprotocol.io/) server for ch
 
 ## What This Is
 
-I’m building Local MCP Toolbox for my own development and troubleshooting workflow. It gives an AI assistant a controlled way to inspect the information I would otherwise gather by hand.
+I’m building Local MCP Toolbox for development, security review, and troubleshooting workflows that need evidence without broad machine authority.
 
 Use it to review changes in an approved repository, investigate recurring log errors, or check an unhealthy container. Each integration requires explicit configuration. Returned evidence helps you investigate; it does not establish a root cause by itself.
 
-The exposed tools cannot edit your files, commit code, or restart containers. The server writes its own audit records. It runs locally and connects to your existing MCP client; there is no separate dashboard or bundled AI model.
+The exposed tools cannot edit your files, commit code, restart containers, execute arbitrary commands, or mutate remote systems. The server writes only its own security audit records. It runs locally and connects to an MCP client; there is no separate dashboard.
 
 ## What You Get
 
@@ -37,8 +37,6 @@ The exposed tools cannot edit your files, commit code, or restart containers. Th
 | Filesystem | Approved-root listing, metadata, and text inspection | Canonical containment, sensitive-path blocklist, extension allowlist, bounded reads |
 | Git | Repository status, branch, commits, and diff summaries | Explicit repository allowlist; fixed, non-interactive Git commands |
 | GitHub | Repository, issue, and pull-request metadata | External-network opt-in, exact repository allowlist, fixed API origin, bounded GET requests |
-| Kubernetes | Cluster, namespace, pod, and deployment metadata | Official SDK, exact context and namespace allowlists, bounded read requests |
-| Local AI | Approved Ollama model inventory and bounded generation | Fixed loopback host, exact model allowlist, prompt redaction before transmission |
 | Python environments | Static virtual-environment dependency metadata audit | Separate roots, link-free fixed paths, no interpreter, Pip, subprocess, import, or network execution |
 | Metrics | Aggregate request outcomes and latency | In-process counters only; no arguments, responses, identifiers, or secrets |
 | Docker | Opt-in container metadata, health, and bounded logs | Official SDK only; no lifecycle, exec, mount, environment, or command access |
@@ -79,7 +77,7 @@ python3 -m venv .venv
 .venv/bin/local-mcp-toolbox doctor --config config/restricted.yml
 ```
 
-`doctor` checks configuration and prerequisites without changing them. Review any reported issues, then [connect your AI client](#connect-your-ai-client) using the supplied template. The client starts the server when needed.
+`doctor` checks configuration and prerequisites without changing them. Review any reported issues, then [connect your client](#connect-a-client) using the supplied template. The client starts the server when needed.
 
 For a manual startup check, run `local-mcp-toolbox serve --config config/restricted.yml` using the executable in your virtual environment. It waits for MCP messages and does not open a browser. Press Ctrl+C to stop it before letting your client start its own instance.
 
@@ -113,7 +111,7 @@ Read the [security model](docs/security-model.md), [threat model](docs/threat-mo
 6. Sanitized request metadata is recorded in the audit log.
 7. The client receives a safe structured result or error.
 
-## Connect Your AI Client
+## Connect a Client
 
 The repository includes maintained stdio configuration templates for supported clients. Adding a client entry lets the client start the process: it does **not** grant the server broader permissions.
 
@@ -189,9 +187,11 @@ demo/             Synthetic services, logs, and intentionally insecure test fixt
 | [Architecture](docs/architecture.md) | System design, components, and data flow |
 | [Security Model](docs/security-model.md) | Controls and trust boundaries |
 | [Threat Model](docs/threat-model.md) | Threat analysis and mitigations |
+| [Version 1.5 Security Review](docs/security-review-1.5.md) | Findings, remediation, verification, and residual responsibilities |
 | [Permissions](docs/permissions.md) | Authorization sequence and profile behavior |
 | [Tool Catalog](docs/tools.md) | Inputs, outputs, and module-level guardrails |
 | [Client Configuration](docs/client-configuration.md) | Codex, Claude, and VS Code setup |
+| [Authenticated HTTP](docs/http-transport.md) | Optional loopback transport and bearer-token controls |
 | [Docker](docs/docker.md) | Hardened container profiles and socket-proxy guidance |
 | [Demo Walkthrough](docs/demo-walkthrough.md) | Synthetic end-to-end policy demonstration |
 | [CI and Release](docs/ci-and-release.md) | Quality, security, docs, package, and release controls |
@@ -199,9 +199,7 @@ demo/             Synthetic services, logs, and intentionally insecure test fixt
 
 ## Project Status
 
-Version 1.0.0 delivers the secure read-only core: MCP stdio transport, typed tools, policy enforcement, centralized redaction, structured errors, sanitized auditing, Docker packaging, a synthetic demo, and CI/release controls.
-
-Version 1.5 development adds allowlisted GitHub and Kubernetes inspection, fixed-loopback Ollama generation, content-free runtime metrics, and a static [Python environment auditor](docs/environment-auditor.md) while preserving the same deny-by-default boundary. Authenticated localhost HTTP, dashboards, and all write operations remain roadmap work. See the [roadmap](ROADMAP.md) and [changelog](CHANGELOG.md) for release history and future scope.
+Version 1.5 adds allowlisted GitHub inspection, content-free runtime metrics, a static [Python environment auditor](docs/environment-auditor.md), authenticated loopback HTTP, crash-safe audit rotation, and hardened release controls. Kubernetes inspection and generation features were removed after security review because their effective behavior could not satisfy the inspection-only contract.
 
 ## Contributing and Security
 
@@ -211,7 +209,7 @@ Contributions are welcome when they preserve the project’s least-privilege mod
 
 ## License
 
-[MIT](LICENSE). Use it, adapt it, and build a safer local AI workflow with it.
+[MIT](LICENSE). Use it, adapt it, and preserve the zero-trust boundary.
 
 ## Built with
 
