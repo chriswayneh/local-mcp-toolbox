@@ -24,6 +24,7 @@ from mcp_toolbox.models import ErrorCategory, ResponseMetadata, ToolboxError, To
 from mcp_toolbox.server.audit_middleware import AuditMiddleware
 from mcp_toolbox.server.runtime import ServerRuntime
 from mcp_toolbox.tools.docker import register_docker_tools
+from mcp_toolbox.tools.environment import register_environment_tools
 from mcp_toolbox.tools.filesystem import register_filesystem_tools
 from mcp_toolbox.tools.git import register_git_tools
 from mcp_toolbox.tools.github import register_github_tools
@@ -153,6 +154,7 @@ def create_server(runtime: ServerRuntime) -> MCPServer:
             ("toolbox_server_status", "toolbox_metrics_snapshot"),
             register_system_tools(server, runtime),
             register_filesystem_tools(server, runtime),
+            register_environment_tools(server, runtime),
             register_git_tools(server, runtime),
             register_github_tools(server, runtime),
             register_docker_tools(server, runtime),
@@ -321,6 +323,8 @@ def _module_inventory(
     registered_modules = ["server_metadata", "system", "filesystem"]
     if any(tool_name.startswith("git_") for tool_name in registered_tool_names):
         registered_modules.append("git")
+    if any(tool_name.startswith("environment_") for tool_name in registered_tool_names):
+        registered_modules.append("environment")
     if any(tool_name.startswith("github_") for tool_name in registered_tool_names):
         registered_modules.append("github")
     if any(tool_name.startswith("docker_") for tool_name in registered_tool_names):

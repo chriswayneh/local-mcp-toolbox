@@ -129,6 +129,29 @@ ollama:
   max_prompt_chars: 8000
 ```
 
+## Python Environments
+
+| Tool | Inputs | Output | Safety controls |
+| --- | --- | --- | --- |
+| `environment_audit_python_venv` | Absolute approved `environment_path`, optional bounded `limit` | Static environment facts, installed package identities, abnormal dependency findings, counts, warning codes, and completeness flags | Separate root allowlist, canonical containment, component link/junction rejection, race-aware bounded reads, central redaction, and no target execution. |
+
+The auditor opens only root `pyvenv.cfg` and exact immediate
+`.dist-info/METADATA` files in recognized Windows or POSIX layouts. It never
+launches Python or Pip, imports installed code, starts a shell, uses the network,
+or reads package source, `.pth`, activation, `RECORD`, or direct-URL files. A
+`no_detected_issues` result describes only the inspected static metadata; it is
+not a runtime-health or security claim. See the full
+[environment auditor contract](environment-auditor.md).
+
+```yaml
+profile: standard
+integrations:
+  environment: true
+environment:
+  approved_roots:
+    - C:\\absolute\\path\\to\\approved-projects
+```
+
 ## Docker
 
 | Tool | Inputs | Output | Safety controls |

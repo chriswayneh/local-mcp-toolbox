@@ -69,6 +69,7 @@
 - [x] Read-only Kubernetes integration
 - [x] Local Ollama provider
 - [x] Aggregate runtime metrics
+- [x] Read-only Python virtual-environment metadata auditor
 - [ ] Authenticated localhost HTTP
 
 ## Version 2.0: Operations Intelligence

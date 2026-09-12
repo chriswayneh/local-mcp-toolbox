@@ -68,8 +68,8 @@ The current MCP surface combines server-generated metadata with narrow read-only
 - `toolbox_server_status`: read-only server metadata; it never inspects the host.
 - System and approved-root filesystem inspection tools.
 - Exact-allowlist Git, GitHub, and Kubernetes inspection, fixed-loopback Ollama generation, opt-in Docker inspection, dedicated approved-root log inspection,
-  fixed-command Bandit scanning, top-level infrastructure metadata inventory, and deterministic
-  incident evidence extraction.
+  fixed-command Bandit scanning, static Python-environment metadata auditing,
+  top-level infrastructure metadata inventory, and deterministic incident evidence extraction.
 - `toolbox://server/status`, `toolbox://configuration/summary`, `toolbox://security/policy`, and `toolbox://modules` resources.
 - `analyze_repository`, `summarize_recent_errors`, `troubleshoot_container`, and `perform_security_review` safe prompt templates.
 
@@ -79,7 +79,7 @@ Every MCP request is recorded through audit middleware. The middleware sends onl
 
 1. Foundation: settings, permissions, redaction, auditing, response contracts
 2. MCP server: stdio registration, resources, prompts, startup checks
-3. Tools: system, filesystem, Git, Docker, logs, scanner adapters, infrastructure, incident summaries
+3. Tools: system, filesystem, Git, Docker, logs, scanner adapters, Python environments, infrastructure, incident summaries
 4. Operations: CLI, doctor, Docker packaging
 5. Quality: demo, docs, CI, release controls
 6. Connected integrations: exact remote allowlists, fixed API origins, network opt-in

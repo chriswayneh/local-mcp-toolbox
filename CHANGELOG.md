@@ -15,6 +15,9 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
   allowlists, bounded prompts, and mandatory pre-transmission redaction.
 - Add thread-safe, content-free aggregate request and latency metrics populated
   through the existing audit middleware.
+- Add an opt-in Python virtual-environment auditor that reads only bounded
+  `pyvenv.cfg` and installed distribution metadata, never executes the target,
+  and refuses false missing-dependency claims when evidence is incomplete.
 - Combine the pending checkout, Python setup, and artifact upload updates to
   version 7, plus the reviewed development and optional dependency ranges.
 - Clarify the README, installation steps, manual startup behavior, and client

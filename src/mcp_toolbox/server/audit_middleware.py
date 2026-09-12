@@ -147,6 +147,7 @@ class AuditMiddleware:
         for name in (
             "entries",
             "records",
+            "packages",
             "findings",
             "matches",
             "commits",

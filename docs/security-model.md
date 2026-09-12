@@ -34,4 +34,10 @@ Kubernetes inspection requires separate integration and external-network opt-ins
 
 Ollama access requires Ollama, external-AI, and network opt-ins plus an exact model allowlist. The host is schema-locked to `127.0.0.1`; only the port is configurable. Prompts are character-bounded and centrally redacted before they cross the loopback connection. Responses are byte-bounded and redacted again before they reach the client.
 
+Python environment auditing uses a separate approved-root policy and reads only
+fixed-shape `pyvenv.cfg` and `.dist-info/METADATA` paths. The target interpreter,
+Pip, activation scripts, package source, imports, subprocesses, and network are
+never used. Incomplete evidence can produce only `partial` or `unverifiable`
+absence results, never a false missing-dependency claim.
+
 Runtime metrics contain only aggregate counts and duration totals grouped by sanitized module and outcome. They never retain argument values, response content, request identifiers, client identifiers, filesystem paths, repository names, model prompts, or generated text.

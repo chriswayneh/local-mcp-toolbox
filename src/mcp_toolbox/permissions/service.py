@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import os
+import stat
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
 from pathlib import Path
 
 from mcp_toolbox.config.settings import (
+    EnvironmentSettings,
     FilesystemSettings,
     GitHubSettings,
     GitSettings,
@@ -60,6 +63,11 @@ class FilesystemAuthorizer:
     def check_directory(self, requested_path: Path) -> PermissionDecision:
         """Check containment and sensitive-name restrictions for a directory path."""
 
+        return self.check_path(requested_path)
+
+    def check_path(self, requested_path: Path) -> PermissionDecision:
+        """Check containment and sensitive names without approving file content."""
+
         containment = self._check_containment(requested_path)
         if not containment.allowed:
             return containment
@@ -74,15 +82,10 @@ class FilesystemAuthorizer:
     def check_file(self, requested_path: Path) -> PermissionDecision:
         """Check containment, blocked names, and allowlisted file extensions."""
 
-        containment = self._check_containment(requested_path)
+        containment = self.check_path(requested_path)
         if not containment.allowed:
             return containment
-
         canonical = requested_path.resolve(strict=False)
-        if self._matches_blocked_pattern(canonical):
-            return PermissionDecision(
-                False, "The path matches a blocked sensitive-file pattern.", "blocked_pattern"
-            )
         if canonical.suffix.lower() not in self._settings.allowed_extensions:
             return PermissionDecision(
                 False, "The file extension is not approved for reading.", "extension"
@@ -112,6 +115,24 @@ class FilesystemAuthorizer:
                 remediation="Use an approved absolute directory path.",
             )
         return requested_path.resolve(strict=False)
+
+    def require_path(self, requested_path: Path) -> Path:
+        """Return a canonical contained path without applying an extension policy."""
+
+        decision = self.check_path(requested_path)
+        if not decision.allowed:
+            raise ToolboxError(
+                ErrorCategory.PERMISSION_DENIED,
+                "Filesystem access was denied by the active policy.",
+                remediation="Use an approved path that does not match a blocked pattern.",
+            )
+        return requested_path.resolve(strict=False)
+
+    @property
+    def roots(self) -> tuple[Path, ...]:
+        """Return canonical configured roots for stricter scoped authorizers."""
+
+        return self._roots
 
     def _check_containment(self, requested_path: Path) -> PermissionDecision:
         if not requested_path.is_absolute():
@@ -162,6 +183,146 @@ class FilesystemAuthorizer:
         return bool(prefix and suffix.isdigit() and blocked_stem.startswith(prefix))
 
 
+class EnvironmentAuthorizer:
+    """Authorize fixed-shape, link-free metadata inside approved Python environments."""
+
+    def __init__(self, settings: EnvironmentSettings) -> None:
+        self._paths = FilesystemAuthorizer(
+            FilesystemSettings(
+                approved_roots=settings.approved_roots,
+                allowed_extensions=frozenset(),
+                blocked_patterns=settings.blocked_patterns,
+                max_directory_entries=settings.max_directory_entries,
+            )
+        )
+
+    def require_environment(self, requested: Path) -> Path:
+        """Authorize one existing regular directory as the per-request boundary."""
+
+        canonical = self._require_existing(requested, directory=True)
+        self._require_descendant_of_root(canonical)
+        return canonical
+
+    def require_directory(self, environment: Path, requested: Path) -> Path:
+        """Authorize an existing regular directory within the request boundary."""
+
+        canonical = self._require_existing(requested, directory=True)
+        self._require_descendant(environment, canonical)
+        return canonical
+
+    def require_config(self, environment: Path, requested: Path) -> Path:
+        """Authorize only the environment root's exact pyvenv.cfg file."""
+
+        canonical = self._require_existing(requested, directory=False)
+        if canonical.parent != environment or canonical.name.casefold() != "pyvenv.cfg":
+            raise self._denied()
+        return canonical
+
+    def require_metadata(
+        self,
+        environment: Path,
+        site_packages: Path,
+        requested: Path,
+    ) -> Path:
+        """Authorize only an immediate dist-info/METADATA regular file."""
+
+        canonical = self._require_existing(requested, directory=False)
+        self._require_descendant(environment, canonical)
+        distribution = canonical.parent
+        if (
+            distribution.parent != site_packages
+            or not distribution.name.casefold().endswith(".dist-info")
+            or canonical.name != "METADATA"
+        ):
+            raise self._denied()
+        self.require_directory(environment, distribution)
+        return canonical
+
+    def reauthorize_directory(self, environment: Path, requested: Path) -> Path:
+        """Recheck a directory after bounded enumeration."""
+
+        return self.require_directory(environment, requested)
+
+    def _require_existing(self, requested: Path, *, directory: bool) -> Path:
+        if not requested.is_absolute() or ".." in requested.parts:
+            raise self._denied()
+        lexical = Path(os.path.abspath(requested))
+        canonical = self._paths.require_path(lexical)
+        try:
+            lexical.lstat()
+        except FileNotFoundError as error:
+            raise ToolboxError(
+                ErrorCategory.RESOURCE_NOT_FOUND,
+                "Expected Python environment metadata was not found.",
+                remediation="Use an existing approved Python virtual environment.",
+            ) from error
+        except OSError as error:
+            raise self._denied() from error
+        root = self._matching_lexical_root(lexical)
+        self._reject_link_or_junction_components(root, lexical)
+        try:
+            value = canonical.stat()
+        except OSError as error:
+            raise ToolboxError(
+                ErrorCategory.RESOURCE_NOT_FOUND,
+                "Expected Python environment metadata was not found.",
+                remediation="Use an existing approved Python virtual environment.",
+            ) from error
+        expected = stat.S_ISDIR(value.st_mode) if directory else stat.S_ISREG(value.st_mode)
+        if not expected:
+            raise self._denied()
+        return canonical
+
+    def _matching_lexical_root(self, requested: Path) -> Path:
+        for root in self._paths.roots:
+            if requested == root or requested.is_relative_to(root):
+                return root
+        raise self._denied()
+
+    @staticmethod
+    def _reject_link_or_junction_components(root: Path, requested: Path) -> None:
+        relative = requested.relative_to(root)
+        candidates = [root]
+        current = root
+        for part in relative.parts:
+            current /= part
+            candidates.append(current)
+        for candidate in candidates:
+            try:
+                value = candidate.lstat()
+                is_link = stat.S_ISLNK(value.st_mode)
+                is_junction = (
+                    candidate.is_junction() if hasattr(candidate, "is_junction") else False
+                )
+            except OSError as error:
+                raise ToolboxError(
+                    ErrorCategory.PERMISSION_DENIED,
+                    "Python environment metadata access was denied by the active policy.",
+                    remediation="Use regular directories and files without links or junctions.",
+                ) from error
+            if is_link or is_junction:
+                raise EnvironmentAuthorizer._denied()
+
+    def _require_descendant_of_root(self, candidate: Path) -> None:
+        if not any(
+            candidate == root or candidate.is_relative_to(root) for root in self._paths.roots
+        ):
+            raise self._denied()
+
+    @staticmethod
+    def _require_descendant(environment: Path, candidate: Path) -> None:
+        if candidate == environment or not candidate.is_relative_to(environment):
+            raise EnvironmentAuthorizer._denied()
+
+    @staticmethod
+    def _denied() -> ToolboxError:
+        return ToolboxError(
+            ErrorCategory.PERMISSION_DENIED,
+            "Python environment metadata access was denied by the active policy.",
+            remediation="Use regular metadata inside an approved Python virtual environment.",
+        )
+
+
 class PermissionService:
     """Central authorization service used by all future tool modules."""
 
@@ -176,6 +337,7 @@ class PermissionService:
         self.github = GitHubRepositoryAuthorizer(settings.github)
         self.kubernetes = KubernetesAuthorizer(settings.kubernetes)
         self.ollama = OllamaModelAuthorizer(settings.ollama)
+        self.environment = EnvironmentAuthorizer(settings.environment)
 
     def check_integration(self, integration: str) -> PermissionDecision:
         enabled = self.settings.integrations.model_dump().get(integration)
@@ -226,6 +388,12 @@ class PermissionService:
         self.require_integration("external_ai")
         self.require_integration("ollama")
         return self.ollama.require_model(model)
+
+    def require_python_environment(self, requested_path: Path) -> Path:
+        """Require the environment integration and its independent root allowlist."""
+
+        self.require_integration("environment")
+        return self.environment.require_environment(requested_path)
 
 
 class GitRepositoryAuthorizer:

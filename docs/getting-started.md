@@ -56,7 +56,12 @@ Start with `restricted.yml`. To inspect an approved project later, copy `config/
 
 ## Current capabilities
 
-The server exposes server metadata plus read-only system, approved-root filesystem, exact-allowlist Git, opt-in Docker inspection, dedicated log-file inspection, fixed-command Bandit scanning, infrastructure metadata inventory, and deterministic incident evidence tools. Kubernetes, GitHub, and all mutating capabilities are not registered.
+The server exposes server metadata plus read-only system, approved-root filesystem,
+exact-allowlist Git and connected integrations, opt-in Docker inspection,
+dedicated log-file inspection, static Python-environment dependency auditing,
+fixed-command Bandit scanning, infrastructure metadata inventory, and
+deterministic incident evidence tools. Disabled modules and all mutating
+capabilities are not registered.
 
 ## Enable Docker inspection deliberately
 

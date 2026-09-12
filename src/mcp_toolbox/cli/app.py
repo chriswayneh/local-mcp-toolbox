@@ -94,6 +94,13 @@ def doctor(
             if "security_scanners" not in integrations
             else "module_check_only",
         },
+        {
+            "name": "environment",
+            "status": "pass" if "environment" in integrations else "skipped",
+            "detail": (
+                "filesystem_metadata_only" if "environment" in integrations else "not_enabled"
+            ),
+        },
     ]
     typer.echo(
         json.dumps(

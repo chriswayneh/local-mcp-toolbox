@@ -63,6 +63,7 @@ class IntegrationSettings(BaseModel):
     github: bool = False
     kubernetes: bool = False
     ollama: bool = False
+    environment: bool = False
     external_network: bool = False
     external_ai: bool = False
 
@@ -152,6 +153,36 @@ class OllamaSettings(BaseModel):
         return frozenset(models)
 
 
+class EnvironmentSettings(BaseModel):
+    """Independent boundaries for inert Python-environment metadata inspection."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    approved_roots: list[Path] = Field(default_factory=list)
+    blocked_patterns: tuple[str, ...] = (
+        ".env",
+        ".env.*",
+        "id_rsa",
+        "id_ed25519",
+        "*.pem",
+        "*.key",
+        "credentials*",
+    )
+    max_directory_entries: int = Field(default=1_000, ge=1, le=10_000)
+    max_metadata_files: int = Field(default=500, ge=1, le=10_000)
+    max_config_file_bytes: int = Field(default=32_768, ge=1_024, le=1_048_576)
+    max_metadata_file_bytes: int = Field(default=262_144, ge=1_024, le=5_242_880)
+    max_dependency_records: int = Field(default=5_000, ge=1, le=100_000)
+    max_dependencies_per_distribution: int = Field(default=500, ge=1, le=10_000)
+
+    @field_validator("blocked_patterns")
+    @classmethod
+    def reject_empty_patterns(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if any(not pattern.strip() for pattern in value):
+            raise ValueError("blocked_patterns cannot contain an empty pattern")
+        return value
+
+
 class LogSettings(FilesystemSettings):
     """Explicit approved roots and limits for the local log-inspection module."""
 
@@ -214,6 +245,7 @@ class ToolboxSettings(BaseModel):
     github: GitHubSettings = Field(default_factory=GitHubSettings)
     kubernetes: KubernetesSettings = Field(default_factory=KubernetesSettings)
     ollama: OllamaSettings = Field(default_factory=OllamaSettings)
+    environment: EnvironmentSettings = Field(default_factory=EnvironmentSettings)
     logs: LogSettings = Field(default_factory=LogSettings)
     security: SecuritySettings = Field(default_factory=SecuritySettings)
     infrastructure: InfrastructureSettings = Field(default_factory=InfrastructureSettings)
@@ -245,6 +277,8 @@ class ToolboxSettings(BaseModel):
             raise ValueError("ollama requires explicit external_ai enablement")
         if self.integrations.ollama and not self.ollama.approved_models:
             raise ValueError("ollama requires at least one approved model")
+        if self.integrations.environment and not self.environment.approved_roots:
+            raise ValueError("environment requires at least one approved root")
         return self
 
 

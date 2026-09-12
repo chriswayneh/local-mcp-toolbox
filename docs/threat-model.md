@@ -20,6 +20,7 @@ The protected assets are the host filesystem, credentials, Docker/Kubernetes con
 | Audit leakage | Raw result serialized to JSONL | Audit schema permits summaries only; redaction count not values | Audit storage permissions and retention remain operator duties. |
 | External LLM exfiltration | Sensitive log sent to hosted model | Local-only default; external AI separate opt-in after redaction | Users decide whether their provider policy permits data sharing. |
 | Local model prompt leakage | Prompt contains a credential before Ollama generation | Fixed loopback host, bounded prompt, central redaction before transmission | Pattern-based redaction is not perfect; users must still minimize prompt scope. |
+| Malicious virtual environment | Metadata attempts execution, traversal, secret disclosure, or resource exhaustion | Never execute/import the target; fixed paths, component link checks, descriptor identity checks, parser/record/byte limits, and central redaction | Hard links and Windows races remain operator-root trust concerns; audit stable environments only. |
 | Metrics data leakage | Operational endpoint exposes request content or identifiers | Aggregate counters only; no labels derived from arguments or clients | Process-level access may still reveal runtime metadata. |
 
 ## Security test commitments
