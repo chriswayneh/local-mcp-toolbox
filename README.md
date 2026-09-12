@@ -37,6 +37,7 @@ The exposed tools cannot edit your files, commit code, or restart containers. Th
 | Filesystem | Approved-root listing, metadata, and text inspection | Canonical containment, sensitive-path blocklist, extension allowlist, bounded reads |
 | Git | Repository status, branch, commits, and diff summaries | Explicit repository allowlist; fixed, non-interactive Git commands |
 | GitHub | Repository, issue, and pull-request metadata | External-network opt-in, exact repository allowlist, fixed API origin, bounded GET requests |
+| Kubernetes | Cluster, namespace, pod, and deployment metadata | Official SDK, exact context and namespace allowlists, bounded read requests |
 | Docker | Opt-in container metadata, health, and bounded logs | Official SDK only; no lifecycle, exec, mount, environment, or command access |
 | Logs | Tails, literal search, and deterministic error grouping | Dedicated approved roots, output limits, and central redaction |
 | Security | Bandit availability and normalized scan findings | Fixed scanner invocation; no user-controlled command arguments or fixes |
@@ -197,7 +198,7 @@ demo/             Synthetic services, logs, and intentionally insecure test fixt
 
 Version 1.0.0 delivers the secure read-only core: MCP stdio transport, typed tools, policy enforcement, centralized redaction, structured errors, sanitized auditing, Docker packaging, a synthetic demo, and CI/release controls.
 
-Version 1.5 development adds allowlisted, read-only connected integrations while preserving the same deny-by-default boundary. Kubernetes, local LLM, HTTP transport, dashboards, and all write operations remain roadmap work. See the [roadmap](ROADMAP.md) and [changelog](CHANGELOG.md) for release history and future scope.
+Version 1.5 development adds allowlisted, read-only GitHub and Kubernetes integrations while preserving the same deny-by-default boundary. Local LLM support, HTTP transport, dashboards, and all write operations remain roadmap work. See the [roadmap](ROADMAP.md) and [changelog](CHANGELOG.md) for release history and future scope.
 
 ## Contributing and Security
 

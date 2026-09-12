@@ -9,6 +9,8 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
   issue, and pull-request metadata through bounded API requests.
 - Require separate GitHub, external-network, and exact repository allowlist
   authorization before any GitHub request is made.
+- Add metadata-only Kubernetes cluster, namespace, pod, and deployment tools
+  using the official SDK, bounded reads, and exact context/namespace allowlists.
 - Combine the pending checkout, Python setup, and artifact upload updates to
   version 7, plus the reviewed development and optional dependency ranges.
 - Clarify the README, installation steps, manual startup behavior, and client

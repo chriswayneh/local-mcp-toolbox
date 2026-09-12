@@ -29,3 +29,5 @@ There is no `exec`, `shell`, `terminal`, or `run_command` MCP tool. If a later s
 Docker socket access is equivalent to high host privilege in many deployments. Containerized Docker inspection is opt-in; the shipped socket-proxy profile is recommended, while direct socket mounting is documented only as an advanced, high-risk configuration.
 
 GitHub inspection requires the GitHub integration, external-network access, and an exact case-insensitive `owner/repository` allowlist. Requests use `GET` only against the fixed `https://api.github.com` origin. Tokens are read from `GITHUB_TOKEN`, used only as an authorization header, and excluded from responses and audit records.
+
+Kubernetes inspection requires separate integration and external-network opt-ins plus exact, case-sensitive context and namespace allowlists. The official SDK creates an isolated client from kubeconfig for the approved context and sends bounded read requests with the configured timeout. Tools omit secrets, annotations, labels, environment variables, volumes, commands, arguments, and pod logs.

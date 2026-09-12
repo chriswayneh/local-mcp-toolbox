@@ -88,3 +88,44 @@ def test_github_repository_allowlist_rejects_invalid_names(tmp_path: Path) -> No
         build_runtime(load_settings(config))
 
     assert raised.value.category is ErrorCategory.CONFIGURATION_ERROR
+
+
+def test_kubernetes_requires_network_and_exact_scope_allowlists(tmp_path: Path) -> None:
+    missing_network = tmp_path / "missing-network.yml"
+    missing_network.write_text(
+        "profile: standard\nintegrations:\n  kubernetes: true\n"
+        "kubernetes:\n  approved_contexts: [production]\n"
+        "  approved_namespaces: [toolbox]\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ToolboxError) as raised:
+        build_runtime(load_settings(missing_network))
+
+    assert raised.value.category is ErrorCategory.CONFIGURATION_ERROR
+
+    missing_scope = tmp_path / "missing-scope.yml"
+    missing_scope.write_text(
+        "profile: standard\nintegrations:\n  kubernetes: true\n  external_network: true\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ToolboxError) as raised:
+        build_runtime(load_settings(missing_scope))
+
+    assert raised.value.category is ErrorCategory.CONFIGURATION_ERROR
+
+
+def test_kubernetes_rejects_invalid_namespace(tmp_path: Path) -> None:
+    config = tmp_path / "invalid.yml"
+    config.write_text(
+        "profile: standard\nintegrations:\n  kubernetes: true\n  external_network: true\n"
+        "kubernetes:\n  approved_contexts: [production]\n"
+        "  approved_namespaces: [Invalid_Namespace]\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ToolboxError) as raised:
+        build_runtime(load_settings(config))
+
+    assert raised.value.category is ErrorCategory.CONFIGURATION_ERROR

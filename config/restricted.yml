@@ -17,6 +17,9 @@ git:
   approved_repositories: []
 github:
   approved_repositories: []
+kubernetes:
+  approved_contexts: []
+  approved_namespaces: []
 limits:
   max_records: 100
   max_output_bytes: 262144

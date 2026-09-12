@@ -82,6 +82,29 @@ github:
     - owner/repository
 ```
 
+## Kubernetes
+
+| Tool | Inputs | Output | Safety controls |
+| --- | --- | --- | --- |
+| `kubernetes_cluster_version` | Approved `context` and `namespace` | Cluster Git version, platform, major, and minor version | Requires both values to be allowlisted before constructing an SDK client. |
+| `kubernetes_namespace_summary` | Approved context and namespace | Namespace phase and lifecycle timestamps | Omits labels, annotations, finalizers, managed fields, and resource contents. |
+| `kubernetes_list_pods` | Approved context and namespace, optional bounded `limit` | Pod name, phase, node, readiness, restarts, and creation time | Omits secrets, environment, volumes, commands, arguments, labels, annotations, and logs. |
+| `kubernetes_list_deployments` | Approved context and namespace, optional bounded `limit` | Deployment name and replica health metadata | Omits pod templates, environment, volumes, labels, annotations, and rollout mutation. |
+
+The Kubernetes integration uses the official Python SDK and creates an isolated client from the operator's existing kubeconfig. Every API call includes the global timeout and a bounded server-side result limit. Install it with `pip install -e ".[kubernetes]"` and grant the kubeconfig identity read-only RBAC permissions.
+
+```yaml
+profile: standard
+integrations:
+  kubernetes: true
+  external_network: true
+kubernetes:
+  approved_contexts:
+    - production-read-only
+  approved_namespaces:
+    - toolbox
+```
+
 ## Docker
 
 | Tool | Inputs | Output | Safety controls |

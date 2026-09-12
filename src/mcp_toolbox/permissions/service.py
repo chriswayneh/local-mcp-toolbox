@@ -10,6 +10,7 @@ from mcp_toolbox.config.settings import (
     FilesystemSettings,
     GitHubSettings,
     GitSettings,
+    KubernetesSettings,
     ToolboxSettings,
 )
 from mcp_toolbox.models import ErrorCategory, ToolboxError
@@ -172,6 +173,7 @@ class PermissionService:
         self.incident = FilesystemAuthorizer(settings.incident)
         self.git = GitRepositoryAuthorizer(settings.git)
         self.github = GitHubRepositoryAuthorizer(settings.github)
+        self.kubernetes = KubernetesAuthorizer(settings.kubernetes)
 
     def check_integration(self, integration: str) -> PermissionDecision:
         enabled = self.settings.integrations.model_dump().get(integration)
@@ -207,6 +209,13 @@ class PermissionService:
         self.require_integration("external_network")
         self.require_integration("github")
         return self.github.require_repository(requested_repository)
+
+    def require_kubernetes_scope(self, context: str, namespace: str) -> tuple[str, str]:
+        """Require network and Kubernetes opt-ins plus exact scope allowlists."""
+
+        self.require_integration("external_network")
+        self.require_integration("kubernetes")
+        return self.kubernetes.require_scope(context, namespace)
 
 
 class GitRepositoryAuthorizer:
@@ -273,3 +282,20 @@ class GitHubRepositoryAuthorizer:
                 remediation="Add the exact owner/repository name to github.approved_repositories.",
             )
         return self._repositories[candidate]
+
+
+class KubernetesAuthorizer:
+    """Authorize exact case-sensitive Kubernetes contexts and namespaces."""
+
+    def __init__(self, settings: KubernetesSettings) -> None:
+        self._contexts = settings.approved_contexts
+        self._namespaces = settings.approved_namespaces
+
+    def require_scope(self, context: str, namespace: str) -> tuple[str, str]:
+        if context not in self._contexts or namespace not in self._namespaces:
+            raise ToolboxError(
+                ErrorCategory.PERMISSION_DENIED,
+                "Kubernetes scope access was denied by the active policy.",
+                remediation=("Add the exact context and namespace to the Kubernetes allowlists."),
+            )
+        return context, namespace

@@ -78,6 +78,10 @@ class GitSettings(BaseModel):
 
 
 _GITHUB_REPOSITORY = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})/[A-Za-z0-9_.-]{1,100}$")
+_KUBERNETES_CONTEXT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,252}$")
+_KUBERNETES_NAMESPACE = re.compile(
+    r"^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?(?:\.[a-z0-9](?:[-a-z0-9]*[a-z0-9])?)*$"
+)
 
 
 class GitHubSettings(BaseModel):
@@ -97,6 +101,34 @@ class GitHubSettings(BaseModel):
                 raise ValueError("GitHub repositories must use the owner/repository format")
             repositories.add(candidate)
         return frozenset(repositories)
+
+
+class KubernetesSettings(BaseModel):
+    """Exact context and namespace allowlists for Kubernetes inspection."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    approved_contexts: frozenset[str] = Field(default_factory=frozenset)
+    approved_namespaces: frozenset[str] = Field(default_factory=frozenset)
+
+    @field_validator("approved_contexts", mode="before")
+    @classmethod
+    def validate_contexts(cls, value: list[str]) -> frozenset[str]:
+        contexts = {context.strip() for context in value}
+        if any(not _KUBERNETES_CONTEXT.fullmatch(context) for context in contexts):
+            raise ValueError("Kubernetes contexts contain unsupported characters")
+        return frozenset(contexts)
+
+    @field_validator("approved_namespaces", mode="before")
+    @classmethod
+    def validate_namespaces(cls, value: list[str]) -> frozenset[str]:
+        namespaces = {namespace.strip() for namespace in value}
+        if any(
+            len(namespace) > 253 or not _KUBERNETES_NAMESPACE.fullmatch(namespace)
+            for namespace in namespaces
+        ):
+            raise ValueError("Kubernetes namespaces must be valid DNS names")
+        return frozenset(namespaces)
 
 
 class LogSettings(FilesystemSettings):
@@ -159,6 +191,7 @@ class ToolboxSettings(BaseModel):
     integrations: IntegrationSettings = Field(default_factory=IntegrationSettings)
     git: GitSettings = Field(default_factory=GitSettings)
     github: GitHubSettings = Field(default_factory=GitHubSettings)
+    kubernetes: KubernetesSettings = Field(default_factory=KubernetesSettings)
     logs: LogSettings = Field(default_factory=LogSettings)
     security: SecuritySettings = Field(default_factory=SecuritySettings)
     infrastructure: InfrastructureSettings = Field(default_factory=InfrastructureSettings)
@@ -173,13 +206,19 @@ class ToolboxSettings(BaseModel):
             enabled = ", ".join(sorted(self.integrations.enabled_names()))
             raise ValueError(f"restricted profile cannot enable integrations: {enabled}")
         network_integrations = {
-            name for name in ("github", "external_ai") if getattr(self.integrations, name)
+            name
+            for name in ("github", "kubernetes", "external_ai")
+            if getattr(self.integrations, name)
         }
         if network_integrations and not self.integrations.external_network:
             enabled = ", ".join(sorted(network_integrations))
             raise ValueError(f"network integrations require external_network: {enabled}")
         if self.integrations.github and not self.github.approved_repositories:
             raise ValueError("github requires at least one approved repository")
+        if self.integrations.kubernetes and (
+            not self.kubernetes.approved_contexts or not self.kubernetes.approved_namespaces
+        ):
+            raise ValueError("kubernetes requires approved contexts and namespaces")
         return self
 
 

@@ -23,6 +23,9 @@ git:
     - /absolute/path/to/approved/project
 github:
   approved_repositories: []
+kubernetes:
+  approved_contexts: []
+  approved_namespaces: []
 logs:
   approved_roots: []
   allowed_extensions: [".log", ".txt", ".jsonl", ".out"]

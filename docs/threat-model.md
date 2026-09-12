@@ -14,6 +14,7 @@ The protected assets are the host filesystem, credentials, Docker/Kubernetes con
 | Command injection | Scanner input adds `; rm -rf` | No shell; fixed binary/argument templates and parameter validation | External scanners themselves must be trusted and patched. |
 | Token exposure | HTTP error echoes an authorization header | Secret-free errors, header redaction, read-only tokens | Users must store tokens outside repository/config commits. |
 | Remote target injection | Repository input supplies an attacker-controlled URL | Fixed GitHub API origin plus validated exact repository allowlist | Operators must review every approved remote repository. |
+| Kubernetes credential misuse | A client requests an unapproved cluster or namespace | Exact context/namespace allowlists, official SDK, read-only methods, RBAC guidance | Operators must provision genuinely read-only Kubernetes credentials. |
 | Oversized input / ReDoS | Multi-GB log or pathological regex | File/output/time limits; safe search strategy; test regressions | Resource limits must match host capacity. |
 | Remote exposure | HTTP server binds publicly without auth | Stdio default; future HTTP localhost-only plus authentication | Operators must not reverse-proxy an insecure service. |
 | Audit leakage | Raw result serialized to JSONL | Audit schema permits summaries only; redaction count not values | Audit storage permissions and retention remain operator duties. |
