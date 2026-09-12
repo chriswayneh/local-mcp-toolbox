@@ -63,7 +63,7 @@ Phase 3 supports stdio only. Startup first loads the explicit YAML profile, vali
 
 The current MCP surface combines server-generated metadata with narrow read-only modules:
 
-- `toolbox_server_status` — read-only server metadata; it never inspects the host.
+- `toolbox_server_status`: read-only server metadata; it never inspects the host.
 - System and approved-root filesystem inspection tools.
 - Exact-allowlist Git inspection, opt-in Docker inspection, dedicated approved-root log inspection,
   fixed-command Bandit scanning, top-level infrastructure metadata inventory, and deterministic
