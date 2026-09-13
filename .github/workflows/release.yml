@@ -155,8 +155,9 @@ jobs:
 
           python -m cyclonedx_py environment "${smoke_dir}/venv/bin/python" \
             --pyproject "${GITHUB_WORKSPACE}/pyproject.toml" \
-            --output-reproducible \
             --output-file release-dist/sbom.cdx.json
+
+          python scripts/validate_release_sbom.py release-dist/sbom.cdx.json
 
       - name: Hash and verify release artifacts
         shell: bash

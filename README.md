@@ -13,7 +13,7 @@ A local [Model Context Protocol](https://modelcontextprotocol.io/) server for ch
 [![License](https://img.shields.io/github/license/chriswayneh/local-mcp-toolbox)](LICENSE)
 [![Scope](https://img.shields.io/badge/scope-read--only-2E7D32)](docs/security-model.md)
 
-**Current release:** v1.5.0 candidate, zero-trust read-only inspection
+**Current release:** v1.5.1, zero-trust read-only inspection
 
 [Quick Start](#quick-start) · [Tools](#what-you-get) · [Security](#security-by-design) · [How It Works](#how-it-works) · [Connect a Client](#connect-a-client) · [Architecture](#architecture) · [Demo](#see-it-safely) · [Roadmap](ROADMAP.md) · [Contributing](CONTRIBUTING.md)
 
