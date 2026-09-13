@@ -3,6 +3,14 @@
 All notable changes to Local MCP Toolbox are documented here. The project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.5.1] - 2026-09-13
+
+- Restore the CycloneDX UUID serial number required by GitHub's SBOM
+  attestation parser.
+- Validate the SBOM format, specification version, and UUID serial number in
+  the build job before the immutable release bundle reaches the protected
+  publish job.
+
 ## [1.5.0] - 2026-09-12
 
 - Add an opt-in read-only GitHub integration for allowlisted repository,
@@ -57,5 +65,6 @@ First stable release of the secure, local-first, read-only MCP toolbox.
   represented through structured contracts.
 - GitHub private vulnerability reporting is enabled for confidential reports.
 
+[1.5.1]: https://github.com/chriswayneh/local-mcp-toolbox/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/chriswayneh/local-mcp-toolbox/compare/v1.0.0...v1.5.0
 [1.0.0]: https://github.com/chriswayneh/local-mcp-toolbox/releases/tag/v1.0.0
