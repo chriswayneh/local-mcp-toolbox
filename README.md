@@ -209,7 +209,11 @@ Contributions are welcome when they preserve the project’s least-privilege mod
 
 ## License
 
-[MIT](LICENSE). Use it, adapt it, and preserve the zero-trust boundary.
+Licensed under the MIT License. Use it, fork it, modify it, or build something of your own. See [LICENSE](LICENSE) for the terms.
+
+---
+
+If this project helped you, a ⭐ is appreciated.
 
 ## Built with
 
@@ -218,6 +222,5 @@ Contributions are welcome when they preserve the project’s least-privilege mod
 <br>
 
 <p align="center">
-  <strong>Inspect local systems with explicit access, bounded evidence, and a clear audit trail.</strong><br>
-  <sub>If this project proves useful, a ⭐ is appreciated.</sub>
+  <strong>Inspect local systems with explicit access, bounded evidence, and a clear audit trail.</strong>
 </p>
