@@ -108,6 +108,15 @@ this is not certification of every external service or scanner installation.
 Windows symlink skips must not be counted as passes; Linux CI exercises those
 cases. A third-party Starlette/AnyIO deprecation warning is non-failing.
 
+The [closeout PR](https://github.com/chriswayneh/local-mcp-toolbox/pull/20) merged
+through the existing branch protections at `019fb101ad1928baf6f9137578e69f3374c5a7cd`.
+Its final [quality run](https://github.com/chriswayneh/local-mcp-toolbox/actions/runs/35492334447)
+passed on Linux Python 3.12/3.13/3.14 and Windows Python 3.12. The Windows runner
+passed all 162 tests, including symlinks. Linux passed 156 tests and skipped six
+Windows-specific cases. [Security](https://github.com/chriswayneh/local-mcp-toolbox/actions/runs/35492334430)
+and [documentation](https://github.com/chriswayneh/local-mcp-toolbox/actions/runs/35492334432)
+also passed. No protection or required check was relaxed.
+
 ### Defects corrected during acceptance
 
 - Log summaries and both incident tools defaulted to 200 or 500 lines, exceeding
@@ -124,6 +133,27 @@ cases. A third-party Starlette/AnyIO deprecation warning is non-failing.
   explicit standard-profile configuration for its optional modules.
 
 ### Artifacts and provenance
+
+Version [1.5.2](https://github.com/chriswayneh/local-mcp-toolbox/releases/tag/v1.5.2)
+was published by [protected release run 35492413559](https://github.com/chriswayneh/local-mcp-toolbox/actions/runs/35492413559)
+from annotated tag `v1.5.2` at `019fb101ad1928baf6f9137578e69f3374c5a7cd`.
+Both build and publish jobs passed. The configured release reviewer approved
+publication through the existing environment gate; no gate was removed.
+
+All four published assets were downloaded and matched their GitHub SHA-256
+digests. The three payload files also matched `SHA256SUMS`. Build provenance and
+CycloneDX SBOM attestations independently verified for both wheel and sdist and
+identified the release commit above. The downloaded SBOM passed format/UUID
+validation. The actual published wheel was installed into the separate package
+environment and passed both real stdio and HTTP acceptance scenarios outside the
+checkout, plus `pip check`.
+
+| Published asset | SHA-256 |
+| --- | --- |
+| `local_mcp_toolbox-1.5.2-py3-none-any.whl` | `5fa76e2db6f9fbe46a6d1e60f9e2f2f26807a993ac82feead69369a85f88ace5` |
+| `local_mcp_toolbox-1.5.2.tar.gz` | `58007f665b8a893463bce242bd03d742d70b1bb15cbb9b8cb29ffc447dd310f3` |
+| `sbom.cdx.json` | `50f85be4df948346d6c0e92a93dc50c12bb5a7689b7e1a6560eb40b0762e27ed` |
+| `SHA256SUMS` | `04bcedde94cf67cdfd42cdabb1a096703b17fc2bf8c55c74383e32104b720f0a` |
 
 The existing v1.5.1 release was downloaded independently. Its wheel, sdist, and
 CycloneDX SBOM matched `SHA256SUMS`; the manifest matched the GitHub asset digest.

@@ -41,7 +41,7 @@ schema uses a `servers` object and a `type` of `stdio`; its workspace
 configuration lives in `.vscode/mcp.json`.  Consult the respective client docs
 when upgrading: [Claude Code MCP](https://docs.anthropic.com/en/docs/claude-code/mcp),
 [VS Code MCP configuration](https://code.visualstudio.com/docs/agents/reference/mcp-configuration),
-and [Codex configuration](https://help.openai.com/en/articles/20001253-configure-codex-with-amazon-bedrock).
+and [Codex MCP configuration](https://developers.openai.com/codex/mcp).
 
 ## Configure access separately from the client
 
