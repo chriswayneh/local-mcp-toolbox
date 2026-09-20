@@ -3,6 +3,19 @@
 All notable changes to Local MCP Toolbox are documented here. The project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.5.2] - 2026-09-20
+
+- Align log-summary and incident default windows with the existing 100-record
+  policy limit. Explicit oversized requests remain rejected.
+- Repair the Docker proxy image reference, pin its digest, and provide bounded
+  temporary storage without removing read-only or capability restrictions.
+- Include and select the existing Docker-only container policy in opt-in profiles.
+- Read image names from container metadata instead of triggering a disallowed
+  image API request through the SDK.
+- Add real stdio/HTTP acceptance tests, reproducible container acceptance, and
+  release operations documentation with explicit verification limitations.
+- Separate completed v1.5 scope from optional future roadmap proposals.
+
 ## [1.5.1] - 2026-09-13
 
 - Restore the CycloneDX UUID serial number required by GitHub's SBOM
@@ -66,5 +79,6 @@ First stable release of the secure, local-first, read-only MCP toolbox.
 - GitHub private vulnerability reporting is enabled for confidential reports.
 
 [1.5.1]: https://github.com/chriswayneh/local-mcp-toolbox/compare/v1.5.0...v1.5.1
+[1.5.2]: https://github.com/chriswayneh/local-mcp-toolbox/compare/v1.5.1...v1.5.2
 [1.5.0]: https://github.com/chriswayneh/local-mcp-toolbox/compare/v1.0.0...v1.5.0
 [1.0.0]: https://github.com/chriswayneh/local-mcp-toolbox/releases/tag/v1.0.0

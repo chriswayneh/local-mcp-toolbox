@@ -2,7 +2,9 @@
 
 Local MCP Toolbox is a local **stdio** server.  A client starts it, writes MCP
 messages to its standard input, and reads protocol responses from its standard
-output.  There is no HTTP listener in Version 1.
+output. Version 1.5 also offers an explicitly enabled, bearer-authenticated
+[loopback HTTP transport](http-transport.md). The templates here use stdio;
+they do not enable HTTP or expose a network service.
 
 ## Prepare the server
 
@@ -48,7 +50,9 @@ not expand the server's own permissions.
 
 1. Copy `config/restricted.yml` to a local, untracked path.
 2. Add only the exact approved roots and explicit integration allowlists needed
-   for the task.
+   for the task. Keep `restricted` for core-only access; select `standard`
+   explicitly when enabling optional integrations. Restricted profiles reject
+   optional integrations rather than silently granting them.
 3. Run `doctor` against that profile.
 4. Start the client and verify `toolbox_server_status` before enabling further
    modules.
@@ -64,3 +68,11 @@ environment.  A container is appropriate only when the client is explicitly
 configured to keep the container attached in the foreground with stdin and
 stdout connected.  Do not use Docker detach mode for an stdio server.  See
 [container deployment](docker.md) for the least-privilege container profiles.
+
+## Verification boundary
+
+The automated suite parses all four templates and launches the installed
+executable from outside the checkout using absolute executable and configuration
+paths. It verifies real MCP initialization, calls, redaction, denials, and audit
+records. It does not automate the Codex, Claude, or VS Code user interfaces or
+certify every client release. See the [acceptance record](release-1.5.md).

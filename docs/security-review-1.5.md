@@ -40,6 +40,10 @@ resource exhaustion, audit integrity, release provenance, and insider misuse.
 
 ## Verification evidence
 
+This section preserves the original v1.5 review results. The later
+[v1.5 release closeout](release-1.5.md) records fresh installation, live
+transport/container checks, and patch-release acceptance separately.
+
 - 149 tests passed locally.
 - Three symbolic-link tests were skipped because the Windows account lacked the
   operating-system privilege to create symbolic links. Equivalent Windows

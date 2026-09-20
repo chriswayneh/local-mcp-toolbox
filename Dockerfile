@@ -14,7 +14,7 @@ COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
 RUN pip install --no-cache-dir ".[docker]"
 
-COPY config/container.yml /app/config/container.yml
+COPY config/container.yml config/container-docker.yml /app/config/
 RUN mkdir --parents /var/lib/local-mcp-toolbox/audit \
     && chown --recursive toolbox:toolbox /app /var/lib/local-mcp-toolbox
 

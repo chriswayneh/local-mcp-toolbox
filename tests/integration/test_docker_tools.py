@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -18,22 +17,16 @@ from mcp_toolbox.server import build_runtime, create_server
 from mcp_toolbox.tools.docker.handlers import DockerGateway
 
 
-@dataclass
-class FakeImage:
-    tags: list[str]
-
-
 class FakeContainer:
     def __init__(self, name: str, *, health: str | None, logs: bytes) -> None:
         self.name = name
         self.short_id = "abc123def456"
         self.status = "running"
-        self.image = FakeImage(tags=["example/api:1.0"])
         self._logs = logs
         self.attrs: dict[str, Any] = {
             "Created": "2026-08-13T00:00:00Z",
             "Image": "sha256:example",
-            "Config": {"Entrypoint": ["python"], "Cmd": ["app.py"]},
+            "Config": {"Image": "example/api:1.0", "Entrypoint": ["python"], "Cmd": ["app.py"]},
             "State": {
                 "RestartCount": 2,
                 "StartedAt": "2026-08-13T00:01:00Z",
@@ -43,6 +36,10 @@ class FakeContainer:
                 "Health": {"Status": health} if health else None,
             },
         }
+
+    @property
+    def image(self) -> Any:
+        raise AssertionError("The image API is deliberately unavailable behind the proxy")
 
     def logs(self, **_: Any) -> bytes:
         return self._logs
@@ -104,6 +101,7 @@ def test_docker_tools_return_safe_bounded_redacted_responses(
             assert listed.is_error is False
             assert listed.structured_content["data"]["total_containers"] == 2
             assert details.is_error is False
+            assert details.structured_content["data"]["image"] == "example/api:1.0"
             assert details.structured_content["data"]["restart_count"] == 2
             assert details.structured_content["data"]["health"] == "unhealthy"
             assert logs.is_error is False

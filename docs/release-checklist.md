@@ -7,6 +7,10 @@ The Version 1.0.0 release record is preserved in the GitHub release and its
 attached artifacts. Keep this file as the reusable checklist for later releases
 rather than marking the template itself complete.
 
+The current completed scope and actual acceptance results are maintained in
+the [v1.5 release record](release-1.5.md). Unchecked boxes below are a reusable
+template, not outstanding v1.5 feature requirements.
+
 ## Scope and security
 
 - [ ] Confirm the release contains only read-only, typed, bounded tools and no

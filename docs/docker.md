@@ -1,6 +1,6 @@
 # Container deployment
 
-The MCP server uses stdio, so the primary container workflow is for controlled local integration rather than a network service. The production image runs as UID/GID `10001`, uses a read-only root filesystem in Compose, drops Linux capabilities, sets `no-new-privileges`, limits writable storage to `/tmp` and the audit volume, and provides a non-mutating `doctor` health check.
+The supplied container profiles use stdio for controlled local integration rather than a network service. The toolbox image runs as UID/GID `10001`, uses a read-only root filesystem in Compose, drops Linux capabilities, sets `no-new-privileges`, limits writable storage to `/tmp` and the audit volume, and provides a non-mutating `doctor` health check.
 
 ## Deployment boundary
 
@@ -37,13 +37,15 @@ The container's standard output is reserved for the MCP protocol. Do not wrap it
 
 ## Docker inspection through a socket proxy
 
-The recommended Docker-enabled profile uses `tecnativa/docker-socket-proxy:0.5.0` and grants only the container-listing API needed by the current read-only tools:
+The Docker-enabled profile uses digest-pinned `tecnativa/docker-socket-proxy:v0.5.0` and permits container GET endpoints plus Docker version/ping discovery. Its explicit `container-docker.yml` policy enables only Docker inspection:
 
 ```powershell
 docker compose --profile docker run --rm -i toolbox-docker
 ```
 
-The proxy owns the host socket mount; the MCP container receives only the internal TCP endpoint. The profile disables `POST`, image, network, and volume access. Review and further restrict the proxy environment flags for your Docker API and threat model.
+The proxy owns the host socket mount; the MCP container receives only the internal TCP endpoint. The profile disables `POST`, image, network, and volume access. The proxy root filesystem remains read-only, with bounded `/tmp` and `/run` tmpfs mounts for HAProxy startup. Image names come from already-fetched container metadata, not the blocked image API.
+
+The proxy is a privileged trust component: it runs as root to access the host socket, and container GET endpoints can expose more information than the toolbox returns. It is not a per-container authorization boundary. Do not attach unrelated or untrusted containers to its internal network, publish its port, or treat a read-only socket mount as a read-only Docker API. The toolbox excludes environment, mount, command, and label fields from responses; the proxy does not independently redact them. Review the [release limitations](release-1.5.md#limitations-and-operator-responsibilities).
 
 ## Direct socket mount: advanced only
 

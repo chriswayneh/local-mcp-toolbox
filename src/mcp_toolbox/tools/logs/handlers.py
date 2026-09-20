@@ -98,7 +98,7 @@ def register_log_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[str, 
         ),
         annotations=_READ_ONLY,
     )
-    def logs_error_summary(path: str, lines: int = 500, limit: int = 20) -> dict[str, Any]:
+    def logs_error_summary(path: str, lines: int = 100, limit: int = 20) -> dict[str, Any]:
         """Return severity counts and redacted evidence groups from a bounded trailing window."""
 
         line_limit = require_bounded_limit(runtime, lines)

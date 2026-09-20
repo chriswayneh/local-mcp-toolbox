@@ -237,5 +237,7 @@ def _health_status(container: Any) -> str | None:
 
 
 def _image_name(container: Any) -> str | None:
-    tags = getattr(container.image, "tags", [])
-    return tags[0] if tags else None
+    # The SDK's container.image property performs an additional images API call.
+    # Use already-fetched container metadata so the proxy can keep IMAGES=0.
+    name = container.attrs.get("Config", {}).get("Image")
+    return name if isinstance(name, str) else None

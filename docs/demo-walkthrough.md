@@ -1,14 +1,15 @@
 # Demo walkthrough
 
-This walkthrough proves the policy model with synthetic data.  It does not
-require a host Docker socket, a real repository, a real service, or credentials.
+This walkthrough exercises the policy model with synthetic data. The log and
+infrastructure steps need no Docker socket, external repository, or credentials.
+The optional container step requires Docker and the documented socket proxy.
 
 ## 1. Start the isolated demo (optional)
 
 ```powershell
-Set-Location demo
-docker compose up -d
-docker compose ps
+# Run from the repository root. This name isolates the disposable demo.
+docker compose -p toolbox-demo -f demo/compose.yaml up -d
+docker compose -p toolbox-demo -f demo/compose.yaml ps
 ```
 
 After two health-check attempts, `healthy` should report healthy and
@@ -29,14 +30,30 @@ flowchart LR
 Stop the demo when finished:
 
 ```powershell
-docker compose down --volumes --remove-orphans
+docker compose -p toolbox-demo -f demo/compose.yaml down
 ```
 
 ## 2. Make a minimal local profile
 
-Copy `config/restricted.yml` outside the repository and configure only the
-demo paths.  The exact schema and option names are documented in
-[getting started](getting-started.md) and [permissions](permissions.md).
+Create an untracked YAML file outside the repository with the following
+configuration. Replace each placeholder with an absolute path; use forward
+slashes on Windows. The `standard` profile is required for optional modules.
+
+```yaml
+profile: standard
+integrations:
+  logs: true
+  infrastructure: true
+logs:
+  approved_roots: ["<repository>/demo/logs"]
+infrastructure:
+  approved_roots: ["<repository>/demo/project"]
+audit:
+  path: "<private-writable-directory>/events.jsonl"
+```
+
+All other integrations remain disabled. See [getting started](getting-started.md)
+and [permissions](permissions.md) for the complete schema.
 
 Use separate roots for each module.  For example, a log root should be
 `<repository>/demo/logs`; an infrastructure root can be
@@ -79,3 +96,19 @@ demonstrates that client access has not become host access.
 Review the local audit JSONL file afterward.  It should contain sanitized
 request metadata and redaction counts, never the raw synthetic token or tool
 output.
+
+## Automated acceptance
+
+From an installed development checkout, run:
+
+```powershell
+.\.venv\Scripts\python -m pytest tests/integration/test_release_acceptance.py -q
+```
+
+This runs the synthetic workflow through the installed stdio executable from
+outside the checkout and tests HTTP authentication and request boundaries on an
+ephemeral loopback port. It creates temporary configuration and audit files and
+stops its own server processes. It does not change client settings.
+
+For actual container inspection through the proxy, follow the reproducible
+[container acceptance commands](release-1.5.md#container-acceptance).

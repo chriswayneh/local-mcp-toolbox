@@ -1,4 +1,4 @@
-# Socket-proxy profile. Docker access remains read-only at the tool boundary.
+# Explicit Docker-only policy for the opt-in socket-proxy container profile.
 profile: standard
 integrations:
   docker: true

@@ -13,7 +13,7 @@ A local [Model Context Protocol](https://modelcontextprotocol.io/) server for ch
 [![License](https://img.shields.io/github/license/chriswayneh/local-mcp-toolbox)](LICENSE)
 [![Scope](https://img.shields.io/badge/scope-read--only-2E7D32)](docs/security-model.md)
 
-**Current release:** v1.5.1, zero-trust read-only inspection
+**Release closeout:** v1.5.2, zero-trust read-only inspection. See the [release contract and acceptance record](docs/release-1.5.md).
 
 [Quick Start](#quick-start) · [Tools](#what-you-get) · [Security](#security-by-design) · [How It Works](#how-it-works) · [Connect a Client](#connect-a-client) · [Architecture](#architecture) · [Demo](#see-it-safely) · [Roadmap](ROADMAP.md) · [Contributing](CONTRIBUTING.md)
 
@@ -23,7 +23,7 @@ A local [Model Context Protocol](https://modelcontextprotocol.io/) server for ch
 
 ## What This Is
 
-I’m building Local MCP Toolbox for development, security review, and troubleshooting workflows that need evidence without broad machine authority.
+Local MCP Toolbox supports development, security review, and troubleshooting workflows that need evidence without broad machine authority.
 
 Use it to review changes in an approved repository, investigate recurring log errors, or check an unhealthy container. Each integration requires explicit configuration. Returned evidence helps you investigate; it does not establish a root cause by itself.
 
@@ -113,7 +113,7 @@ Read the [security model](docs/security-model.md), [threat model](docs/threat-mo
 
 ## Connect a Client
 
-The repository includes maintained stdio configuration templates for supported clients. Adding a client entry lets the client start the process: it does **not** grant the server broader permissions.
+The repository includes stdio configuration templates for the clients below. Template parsing and the installed server's launch contract are tested; individual desktop application versions are not certified. Adding a client entry lets the client start the process: it does **not** grant the server broader permissions.
 
 | Client | Copy-ready template |
 | --- | --- |
@@ -195,11 +195,14 @@ demo/             Synthetic services, logs, and intentionally insecure test fixt
 | [Docker](docs/docker.md) | Hardened container profiles and socket-proxy guidance |
 | [Demo Walkthrough](docs/demo-walkthrough.md) | Synthetic end-to-end policy demonstration |
 | [CI and Release](docs/ci-and-release.md) | Quality, security, docs, package, and release controls |
-| [Roadmap](ROADMAP.md) | Planned Version 1.5+ scope |
+| [Release Contract](docs/release-1.5.md) | Supported v1.5 scope, acceptance evidence, operations, and limitations |
+| [Roadmap](ROADMAP.md) | Completed v1.5 scope and optional future proposals |
 
 ## Project Status
 
 Version 1.5 adds allowlisted GitHub inspection, content-free runtime metrics, a static [Python environment auditor](docs/environment-auditor.md), authenticated loopback HTTP, crash-safe audit rotation, and hardened release controls. Kubernetes inspection and generation features were removed after security review because their effective behavior could not satisfy the inspection-only contract.
+
+The v1.5 feature scope is complete. Version 1.5.2 closes default-parameter and container setup defects without adding capabilities. Support is limited to the local inspection contract in the [acceptance record](docs/release-1.5.md), not a hosted service, multi-user security boundary, or production availability guarantee. Versions 2 through 4 are optional proposals, not unfinished release requirements.
 
 ## Contributing and Security
 
