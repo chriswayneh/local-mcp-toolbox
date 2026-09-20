@@ -85,7 +85,7 @@ The default profile has no approved file roots or optional integrations. Start b
 
 ## Security by Design
 
-The design applies zero trust and least privilege: each request is checked against local policy, and integrations receive only the access you explicitly configure.
+The design applies zero-trust principles and least privilege: each tool request is checked against local policy, and integrations receive only the access you explicitly configure. Local execution alone does not authorize access to a path, repository, or optional integration.
 
 | Control | Protection |
 | --- | --- |
@@ -98,6 +98,8 @@ The design applies zero trust and least privilege: each request is checked again
 | Sanitized audit | Requests record safe metadata, actual outcomes, and redaction counts. Raw secrets and tool output are excluded. |
 | Explicit integrations | GitHub, Git, Docker, logs, scanners, infrastructure, and incident tools must be configured intentionally. |
 | Untrusted evidence | Retrieved files, logs, commit messages, and metadata are treated as untrusted data. |
+
+The workstation, configured policy, installed dependencies, and any enabled Docker proxy remain trusted components. Read-only tools are not an operating-system sandbox, and the loopback HTTP token is not multi-user identity. These controls do not constitute a complete enterprise zero-trust architecture or security certification. See the [verified limitations](docs/release-1.5.md#limitations-and-operator-responsibilities).
 
 Read the [security model](docs/security-model.md), [threat model](docs/threat-model.md), and the security-focused [architecture decisions](docs/adr/) for the complete rationale.
 
