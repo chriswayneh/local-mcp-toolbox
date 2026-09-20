@@ -24,7 +24,7 @@ Redaction recognizes PEM private-key blocks, API/service credentials, authorizat
 
 ## Command and integration policy
 
-There is no `exec`, `shell`, `terminal`, or `run_command` MCP tool. If a later scanner adapter invokes an installed executable, it will use a fixed program path and argument array, an allowlisted argument template, scrubbed environment, time limit, output cap, and audit event. It will not invoke a shell.
+There is no `exec`, `shell`, `terminal`, or `run_command` MCP tool. The shipped Git and Bandit adapters use fixed command templates, scrubbed environments, time limits, output caps, and audit events with `shell=False`. Read-only does not mean no subprocesses; it means clients cannot supply arbitrary commands or request mutations.
 
 Docker socket access is equivalent to high host privilege in many deployments. Containerized Docker inspection is opt-in; the shipped socket-proxy profile is recommended, while direct socket mounting is documented only as an advanced, high-risk configuration.
 

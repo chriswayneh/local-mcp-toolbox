@@ -6,6 +6,8 @@ from pathlib import Path
 
 import yaml
 
+from mcp_toolbox.config.settings import ToolboxSettings
+
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -47,3 +49,25 @@ def test_demo_compose_defines_isolated_healthy_and_unhealthy_services() -> None:
     assert "ports" not in unhealthy
     assert "volumes" not in healthy
     assert "volumes" not in unhealthy
+
+
+def test_docker_profile_explicitly_enables_only_docker() -> None:
+    compose = yaml.safe_load((REPOSITORY_ROOT / "compose.yaml").read_text(encoding="utf-8"))
+    service = compose["services"]["toolbox-docker"]
+    assert service["command"] == ["serve", "--config", "/app/config/container-docker.yml"]
+    settings = ToolboxSettings.model_validate(
+        yaml.safe_load(
+            (REPOSITORY_ROOT / "config/container-docker.yml").read_text(encoding="utf-8")
+        )
+    )
+    assert settings.integrations.docker
+    assert sum(settings.integrations.model_dump().values()) == 1
+    assert settings.filesystem.approved_roots == []
+    proxy = compose["services"]["docker-socket-proxy"]
+    assert ":v0.5.0@sha256:" in proxy["image"]
+    assert proxy["read_only"]
+    assert proxy["cap_drop"] == ["ALL"]
+    assert proxy["environment"]["POST"] == 0
+    assert "ports" not in proxy
+    assert any(mount.startswith("/tmp:") for mount in proxy["tmpfs"])  # noqa: S108
+    assert any(mount.startswith("/run:") for mount in proxy["tmpfs"])

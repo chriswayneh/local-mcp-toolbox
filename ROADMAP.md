@@ -65,6 +65,11 @@
 
 ## Version 1.5: Connected Integrations
 
+The v1.5 feature scope is complete. The v1.5.2 closeout fixes default request
+limits and the documented container/proxy deployment. The supported contract,
+acceptance evidence, and operational limits are recorded in
+[release and operations](docs/release-1.5.md).
+
 - [x] Read-only GitHub integration
 - [x] Aggregate runtime metrics
 - [x] Read-only Python virtual-environment metadata auditor
@@ -72,14 +77,22 @@
 - [x] Remove integrations that cannot enforce the inspection-only contract
 - [x] Harden audit rotation and release provenance controls
 
-## Version 2.0: Operational Analysis
+## Optional future proposals, not release requirements
 
-- [ ] Deterministic correlation, architecture and runbook generation, optional dashboard
+The ideas below are not committed deliverables, scheduled releases, or gaps in
+v1.5 acceptance. Maintenance of v1.5 remains focused on defects, dependency
+security, documentation, and preserving the existing read-only contract.
 
-## Version 3.0: Controlled Actions
+### Possible Version 2: Operational Analysis
 
-- [ ] Explicitly approved, dry-run-capable scoped actions with signed records
+- Deterministic correlation, architecture and runbook generation, optional dashboard.
 
-## Version 4.0: Enterprise
+### Possible Version 3: Separate Action Surface
 
-- [ ] Multi-user auth, OIDC, centralized audit, policy-as-code, and enterprise integrations
+- Explicitly approved, dry-run-capable scoped actions with signed records would
+  require a separate product/security decision and trust boundary. No mutation
+  capability is part of the supported v1.5 server or its completion criteria.
+
+### Possible Version 4: Enterprise
+
+- Multi-user auth, OIDC, centralized audit, policy-as-code, and enterprise integrations.

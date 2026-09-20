@@ -44,7 +44,7 @@ def register_incident_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[
         ),
         annotations=_READ_ONLY,
     )
-    def incident_extract_timeline(path: str, lines: int = 200) -> dict[str, Any]:
+    def incident_extract_timeline(path: str, lines: int = 100) -> dict[str, Any]:
         """Return observed trailing log events; source timestamps are not inferred or reordered."""
 
         line_limit = require_bounded_limit(runtime, lines)
@@ -72,7 +72,7 @@ def register_incident_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[
         description="Group observed high-severity log evidence without asserting a root cause.",
         annotations=_READ_ONLY,
     )
-    def incident_summarize_evidence(path: str, lines: int = 500, limit: int = 20) -> dict[str, Any]:
+    def incident_summarize_evidence(path: str, lines: int = 100, limit: int = 20) -> dict[str, Any]:
         """Return deterministic observations, unknowns, and safe next checks from one log window."""
 
         line_limit = require_bounded_limit(runtime, lines)
