@@ -91,12 +91,12 @@ license clarification. Existing work and license text were preserved.
 | Check actually performed | Result and qualification |
 | --- | --- |
 | Clean Windows checkout and new Python 3.13 environment | Editable install with dev, Docker, and release extras succeeded; baseline 156 tests passed, 3 symlink tests skipped for missing Windows privilege |
-| Candidate automated suite | 159 passed, 3 Windows symlink skips; retained real-transport regression tests |
+| Candidate automated suite | Repeated from a clean fetched candidate checkout: 159 passed, 3 Windows symlink skips; retained real-transport regression tests |
 | Installed stdio launch outside checkout | Initialization, status, demo logs/infrastructure, incident defaults, redaction, outside-root denial, disabled Docker denial, strict JSONL audit passed |
 | Real loopback HTTP socket | Missing/wrong token 401, invalid Host 421, invalid Origin 403, oversized body 413, authenticated initialization and status passed; token absent from captured diagnostics/audit |
 | Client templates | All four parse and startup arguments are tested; actual desktop application interfaces were not automated |
-| Quality and security | Ruff, mypy, Bandit, and dependency audit run; project itself is skipped by pip-audit because it is not on PyPI, not silently declared vulnerability-free |
-| Package and documentation | Isolated sdist/wheel build and local documentation-link validation run; published artifacts verified separately below |
+| Quality and security | Ruff formatting/lint, mypy, and Bandit passed; dependency audit found no known dependency vulnerabilities. The project itself is skipped by pip-audit because it is not on PyPI, not silently declared vulnerability-free |
+| Package and documentation | Isolated sdist/wheel build, four Compose profile renders, and 23 Markdown-file link checks passed. Wheel installed in a separate environment, imported from site-packages, passed pip check, CLI/doctor, and both real-transport acceptance scenarios outside the checkout; wheel-environment SBOM validation passed |
 | Container runtime | Linux image build and restricted doctor passed with read-only root, dropped capabilities, and no-new-privileges; real container stdio verified healthy/unhealthy demo services, bounded logs, and oversized-request denial through the proxy |
 | Socket proxy | Corrected digest-pinned image starts with read-only root; version GET allowed, image GET and mutation POST rejected with 403 |
 
@@ -127,8 +127,8 @@ cases. A third-party Starlette/AnyIO deprecation warning is non-failing.
 
 The existing v1.5.1 release was downloaded independently. Its wheel, sdist, and
 CycloneDX SBOM matched `SHA256SUMS`; the manifest matched the GitHub asset digest.
-SBOM format/UUID validation passed. GitHub build-provenance verification passed
-for both distributions and identified release commit
+SBOM format/UUID validation passed. GitHub build-provenance and CycloneDX SBOM
+attestation verification passed for both distributions. Provenance identified release commit
 `99f50c78d46bae6b59559974ffd5855169a1d856` and
 [release workflow 34774045119](https://github.com/chriswayneh/local-mcp-toolbox/actions/runs/34774045119).
 

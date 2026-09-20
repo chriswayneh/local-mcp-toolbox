@@ -69,6 +69,18 @@ async def verify(image: str, network: str, healthy: str, unhealthy: str) -> None
                 if not denied.is_error or denied.structured_content["category"] != "INVALID_INPUT":
                     raise RuntimeError("Oversized Docker log request was not denied")
                 print("PASS: bounded logs and oversized-request denial over container stdio")
+                unhealthy_result = await client.call_tool(
+                    "docker_unhealthy_containers", {"limit": 100}
+                )
+                if unhealthy_result.is_error:
+                    raise RuntimeError("Unhealthy container query failed")
+                names = {
+                    item["name"]
+                    for item in unhealthy_result.structured_content["data"]["containers"]
+                }
+                if unhealthy not in names or healthy in names:
+                    raise RuntimeError("Demo health filtering did not match observed health")
+                print("PASS: synthetic unhealthy service found by docker_unhealthy_containers")
 
 
 def main() -> None:
