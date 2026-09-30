@@ -2,7 +2,7 @@
 
 # Local MCP Toolbox
 
-### Inspect approved local systems through a strict zero-trust boundary.
+### Read-only inspection with explicit access controls.
 
 A local [Model Context Protocol](https://modelcontextprotocol.io/) server for checking files, Git changes, application logs, container health, and Python environments. You choose what it can inspect. Every request is authorized, sensitive output is redacted, results are bounded, and activity is audited.
 
