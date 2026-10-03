@@ -86,4 +86,4 @@ Every MCP request is recorded through audit middleware. The middleware sends onl
 
 ## Non-goals
 
-The toolbox does not mutate infrastructure, run arbitrary commands, write documentation files, access secret values, or expose an unauthenticated network listener.
+The toolbox does not mutate infrastructure, run arbitrary commands, or expose an unauthenticated network listener. Its only intentional writes are its own audit records. It does not have a secret-retrieval tool; pattern redaction can still miss sensitive prose inside an approved file.

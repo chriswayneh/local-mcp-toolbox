@@ -8,7 +8,7 @@ The intended evaluation order is:
 2. Check that the module is enabled for the active profile.
 3. Check the operation is read-only and supported.
 4. Resolve any filesystem target canonically and verify it remains under an approved root.
-5. Verify integration-specific allowlists, such as local repositories, GitHub repositories, namespaces, or Python-environment roots.
+5. Verify integration-specific allowlists, such as local repositories, GitHub repositories, or Python-environment roots.
 6. Apply output limits, redact the result, and record the decision.
 
 An error at any point denies the request. `profile: advanced` is rejected while loading configuration. It is not a hidden elevated mode, and enabling a module never grants access that the profile and allowlists did not already allow.

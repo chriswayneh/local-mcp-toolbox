@@ -4,11 +4,13 @@ Date: 2026-09-12
 
 ## Scope
 
-The review covered the Version 1.5 branch changes from commit `28bc04e` through
-the release candidate. It used source-backed threat modeling, independent
-finding discovery, focused proof tests, remediation, and regression testing.
-The review lens emphasized zero trust, least privilege, credential recipients,
-resource exhaustion, audit integrity, release provenance, and insider misuse.
+This is a maintainer review recorded in the repository on 2026-09-12. It is
+not a third-party assessment or an external penetration test. It covered the
+Version 1.5 branch changes from commit `28bc04e` through the release candidate,
+using source-backed threat modeling, separate finding passes, focused proof
+tests, remediation, and regression testing. The review lens emphasized zero
+trust, least privilege, credential recipients, resource exhaustion, audit
+integrity, release provenance, and insider misuse.
 
 ## Findings and disposition
 

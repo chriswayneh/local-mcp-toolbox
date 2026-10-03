@@ -8,7 +8,7 @@ All current tools are read-only. Every returned response uses the common envelop
 | --- | --- | --- | --- |
 | `system_info` | None | OS, architecture, Python version, CPU count, capture time | Does not return environment variables, usernames, home paths, or processes. |
 | `disk_usage` | None | Aggregate bytes total, used, and free for the server working volume | Does not enumerate file paths. |
-| `installed_developer_tools` | None | Availability of a fixed allowlist: Git, Docker, kubectl, Python, Node, npm, Terraform | Resolves availability only; does not execute programs or disclose executable paths. |
+| `installed_developer_tools` | None | Availability of a fixed allowlist: Git, Docker, kubectl, Python, Node, npm, Terraform | Resolves availability only; does not execute programs or disclose executable paths. `kubectl` is a name in that list only. There is no Kubernetes client or API call. |
 | `toolbox_metrics_snapshot` | None | Aggregate request counts, outcomes, modules, uptime, and latency | In-process counters only; excludes arguments, responses, request/client identifiers, and integration targets. |
 
 ## Filesystem

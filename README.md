@@ -21,6 +21,20 @@ A local [Model Context Protocol](https://modelcontextprotocol.io/) server for ch
 
 ---
 
+## Limits in force
+
+The server enforces the YAML file passed to `--config`. The shipped default, `config/restricted.yml` (the same policy values as `config/default.yml`), approves nothing:
+
+- No filesystem roots. File tools deny every path.
+- Docker, Git, GitHub, logs, scanners, infrastructure, incidents, Python environments, and external network are off.
+- File reads stop at 240,000 bytes. Directory scans stop at 500 entries. Responses stop at 100 records and 262,144 bytes. Subprocess and GitHub calls time out after 10 seconds.
+- Readable extensions are `.md`, `.txt`, `.json`, `.yaml`, `.yml`, `.toml`, `.py`, and `.ts`. Blocked names are `.env`, `.env.*`, `id_rsa`, `id_ed25519`, `*.pem`, `*.key`, and `credentials*`.
+- Home-directory paths are redacted. Email addresses and IP addresses are not, unless that policy option is turned on.
+- Audit events are capped at 8,192 bytes and segments at 8,388,608 bytes. Closed segments are kept for 30 days. A relative `audit.path` is resolved from the configuration file's directory, not the process working directory.
+- HTTP is disabled. `profile: advanced` is rejected.
+
+Those are the running defaults, not the schema ceilings. An operator can raise several numbers inside a private profile; the ceilings, and the defaults that apply only after an integration is enabled, are in the [security model](docs/security-model.md#limits-in-force). Pattern redaction is not a guarantee that every secret is recognized.
+
 ## What This Is
 
 Local MCP Toolbox supports development, security review, and troubleshooting workflows that need evidence without broad machine authority.
@@ -93,7 +107,7 @@ The design applies zero-trust principles and least privilege: each tool request 
 | Approved roots | Canonical containment blocks arbitrary filesystem access and escape paths. |
 | Read-only surface | No generic shell, mutation, commit, lifecycle, or remote-execution tool is registered. |
 | Fixed subprocesses | External binaries use fixed argument templates, `shell=False`, scrubbed environments, timeouts, and output caps. |
-| Central redaction | PEM blocks, credentials, cookies, authorization headers, connection strings, and optional privacy identifiers are redacted before output. |
+| Central redaction | PEM blocks, credentials, cookies, authorization headers, connection strings, and home-directory paths are redacted before output. Email and IP redaction are off unless enabled. |
 | Output bounds | File reads, collections, subprocess output, and responses are size-limited. |
 | Sanitized audit | Requests record safe metadata, actual outcomes, and redaction counts. Raw secrets and tool output are excluded. |
 | Explicit integrations | GitHub, Git, Docker, logs, scanners, infrastructure, and incident tools must be configured intentionally. |
@@ -204,7 +218,7 @@ demo/             Synthetic services, logs, and intentionally insecure test fixt
 
 Version 1.5 adds allowlisted GitHub inspection, content-free runtime metrics, a static [Python environment auditor](docs/environment-auditor.md), authenticated loopback HTTP, crash-safe audit rotation, and hardened release controls. Kubernetes inspection and generation features were removed after security review because their effective behavior could not satisfy the inspection-only contract.
 
-The v1.5 feature scope is complete. Version 1.5.2 closes default-parameter and container setup defects without adding capabilities. Support is limited to the local inspection contract in the [acceptance record](docs/release-1.5.md), not a hosted service, multi-user security boundary, or production availability guarantee. Versions 2 through 4 are optional proposals, not unfinished release requirements.
+The v1.5 feature scope is complete. Version 1.5.2 closes default-parameter and container setup defects without adding capabilities. Support is limited to the local inspection contract in the [acceptance record](docs/release-1.5.md), not a hosted service, multi-user security boundary, or production availability guarantee. The package classifier Production/Stable means that local contract, not a hosted production service. Versions 2 through 4 are optional proposals, not unfinished release requirements.
 
 ## Contributing and Security
 
