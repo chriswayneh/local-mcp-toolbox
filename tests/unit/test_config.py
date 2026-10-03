@@ -101,3 +101,13 @@ def test_http_transport_rejects_unsafe_token_environment_name() -> None:
     invalid_name = "unsafe-name"
     with pytest.raises(ValueError):
         HttpSettings(token_environment=invalid_name)
+
+
+def test_advanced_profile_is_rejected(tmp_path: Path) -> None:
+    config = tmp_path / "advanced.yml"
+    config.write_text("profile: advanced\n", encoding="utf-8")
+
+    with pytest.raises(ToolboxError) as raised:
+        load_settings(config)
+
+    assert raised.value.category is ErrorCategory.CONFIGURATION_ERROR

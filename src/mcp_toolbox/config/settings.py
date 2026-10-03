@@ -217,6 +217,10 @@ class ToolboxSettings(BaseModel):
 
     @model_validator(mode="after")
     def enforce_profile_invariants(self) -> ToolboxSettings:
+        if self.profile is PermissionProfile.ADVANCED:
+            raise ValueError(
+                "advanced profile is not implemented and is rejected; use restricted or standard"
+            )
         if self.profile is PermissionProfile.RESTRICTED and self.integrations.enabled_names():
             enabled = ", ".join(sorted(self.integrations.enabled_names()))
             raise ValueError(f"restricted profile cannot enable integrations: {enabled}")

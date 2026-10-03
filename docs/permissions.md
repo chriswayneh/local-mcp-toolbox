@@ -11,7 +11,7 @@ The intended evaluation order is:
 5. Verify integration-specific allowlists, such as local repositories, GitHub repositories, namespaces, or Python-environment roots.
 6. Apply output limits, redact the result, and record the decision.
 
-An error at any point denies the request. Future advanced mode must be a separate, explicit configuration path; it will not inherit elevated access merely because a module is enabled.
+An error at any point denies the request. `profile: advanced` is rejected while loading configuration. It is not a hidden elevated mode, and enabling a module never grants access that the profile and allowlists did not already allow.
 
 ## Decision flow
 
