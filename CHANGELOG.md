@@ -3,6 +3,18 @@
 All notable changes to Local MCP Toolbox are documented here. The project uses
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+These changes are on `main` and are not part of the v1.5.2 tag. No new release
+was published.
+
+- Reject `profile: advanced` when configuration is loaded. It is not an elevated
+  mode.
+- Document the shipped restricted-profile limits, schema ceilings, inactive
+  integration defaults, and the fact that email and IP redaction are off unless
+  enabled. The 1.0.0 tag is not a security-fix line.
+- Make `doctor` report `attention` when any check warns, instead of `ready`.
+
 ## [1.5.2] - 2026-09-20
 
 - Align log-summary and incident default windows with the existing 100-record

@@ -10,10 +10,11 @@ request is usually evidence that an authorization boundary is working.
 .\.venv\Scripts\local-mcp-toolbox serve --config config\restricted.yml
 ```
 
-`doctor` validates YAML, profile invariants, approved roots, audit-log
-parent access, Git availability, optional Docker SDK availability, and Bandit
-availability.  `serve` reserves stdout for MCP traffic; inspect stderr for
-startup errors.
+`doctor` validates YAML and profile invariants. It reports whether the audit
+parent directory exists, and it reports Git, Docker SDK, and Bandit availability
+only when those integrations are enabled. It does not test write access, contact
+Docker, or run a scanner. Its JSON `status` is `attention` when any check warns.
+`serve` reserves stdout for MCP traffic; inspect stderr for startup errors.
 
 | Symptom | Likely cause | Safe response |
 | --- | --- | --- |
