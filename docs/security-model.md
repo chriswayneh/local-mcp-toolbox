@@ -14,7 +14,7 @@
 | --- | --- | --- | --- | --- |
 | Restricted (default) | Explicit roots only | None | None | Never |
 | Standard | Explicit roots only | Optional read-only Git, GitHub, and Docker | Fixed remote APIs only with separate network opt-in | Never |
-| Advanced (future) | Explicit roots only | Explicit allowlists | Explicit destinations | Separate approval design required |
+| `advanced` | Not accepted | Not accepted | Not accepted | The name is rejected at load time. It does not grant extra tools or skip checks. |
 
 ## Data protections
 
