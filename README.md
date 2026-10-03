@@ -91,7 +91,7 @@ python3 -m venv .venv
 .venv/bin/local-mcp-toolbox doctor --config config/restricted.yml
 ```
 
-`doctor` checks configuration and prerequisites without changing them. Review any reported issues, then [connect your client](#connect-a-client) using the supplied template. The client starts the server when needed.
+`doctor` checks configuration and prerequisites without changing them. Its JSON `status` is `ready` only when every check passed or was skipped; a warning makes it `attention`, and the command still exits 0. Review any reported issues, then [connect your client](#connect-a-client) using the supplied template. The client starts the server when needed.
 
 For a manual startup check, run `local-mcp-toolbox serve --config config/restricted.yml` using the executable in your virtual environment. It waits for MCP messages and does not open a browser. Press Ctrl+C to stop it before letting your client start its own instance.
 

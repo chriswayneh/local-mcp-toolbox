@@ -123,10 +123,11 @@ def doctor(
             ),
         },
     ]
+    warning = any(check["status"] == "warning" for check in checks)
     typer.echo(
         json.dumps(
             {
-                "status": "ready",
+                "status": "attention" if warning else "ready",
                 "profile": runtime.settings.profile.value,
                 "enabled_integrations": sorted(integrations),
                 "checks": checks,
