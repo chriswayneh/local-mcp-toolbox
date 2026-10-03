@@ -221,13 +221,23 @@ def _safe_git_environment() -> dict[str, str]:
     return environment
 
 
+# Porcelain v1 prints this instead of `## <branch>` when the branch has no commit.
+_UNBORN_BRANCH_PREFIX = "No commits yet on "
+
+
 def _parse_branch(line: str) -> dict[str, Any]:
+    """Parse the branch header from `git status --porcelain=v1 --branch`."""
+
     head: str | None = None
     upstream: str | None = None
     ahead = 0
     behind = 0
     if line.startswith("## "):
         reference = line[3:]
+        # An unborn branch is `## No commits yet on <name>`. Keeping that
+        # sentence reports a branch name that does not exist.
+        if reference.startswith(_UNBORN_BRANCH_PREFIX):
+            reference = reference[len(_UNBORN_BRANCH_PREFIX) :]
         branch_part, separator, tracking_part = reference.partition("...")
         head = branch_part if branch_part != "HEAD (no branch)" else None
         if separator:

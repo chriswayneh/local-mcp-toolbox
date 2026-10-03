@@ -28,3 +28,18 @@ def test_git_parsers_preserve_valid_fixed_command_output() -> None:
         "added_lines": 2,
         "deleted_lines": None,
     }
+
+
+def test_unborn_branch_header_names_the_branch() -> None:
+    """`git status --porcelain=v1 --branch` does not print `## <branch>` yet.
+
+    Before the first commit the header is `## No commits yet on <branch>`.
+    That sentence is not the branch name.
+    """
+    assert _parse_branch("## No commits yet on main") == {
+        "head": "main",
+        "upstream": None,
+        "ahead": 0,
+        "behind": 0,
+    }
+    assert _parse_branch("## HEAD (no branch)")["head"] is None
