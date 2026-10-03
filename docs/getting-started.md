@@ -25,7 +25,7 @@ On macOS or Linux, use the [README commands](../README.md#macos--linux).
 
 The stdio process must reserve standard output for MCP protocol messages. Operator errors are written to standard error; do not wrap the command in a shell tool exposed to an MCP client.
 
-`doctor` is a non-mutating preflight command. It validates the configuration and reports audit-directory readiness plus prerequisite availability for enabled Git, Docker, and Bandit scanner modules. It does not contact Docker, run a scanner, or create audit directories.
+`doctor` is a non-mutating preflight command. It validates the configuration and reports audit-directory readiness plus prerequisite availability for enabled Git, Docker, and Bandit scanner modules. It does not contact Docker, run a scanner, or create audit directories. The JSON `status` is `ready` only when every check passed or was skipped. Any warning, including a missing audit directory, sets `status` to `attention`. The command still exits 0.
 
 On Windows, the same maintained tasks are available without Make:
 
