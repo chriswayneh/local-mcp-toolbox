@@ -1,9 +1,7 @@
 # v1.5 release and operations
 
-Version 1.5.3 is the patch release candidate for advanced-profile rejection and
-doctor warning readiness. Tag and publication are pending. The pinned clone
-command below becomes available after publication; before then, validate the
-locally built 1.5.3 wheel. The 1.5.2 publication evidence below is historical.
+Version 1.5.3 adds advanced-profile rejection and correct doctor warning readiness
+to the v1.5 release contract. The 1.5.2 publication evidence below is historical.
 
 ## Supported release contract
 

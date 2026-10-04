@@ -5,9 +5,6 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
 
 ## [1.5.3] - 2026-10-04
 
-Release candidate; tag and publication pending. These fixes are not part of
-the published v1.5.2 tag.
-
 - Reject `profile: advanced` when configuration is loaded. It is not an elevated
   mode.
 - Document the shipped restricted-profile limits, schema ceilings, inactive
