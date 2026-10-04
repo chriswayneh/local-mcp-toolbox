@@ -1,5 +1,8 @@
 # v1.5 release and operations
 
+Version 1.5.3 adds advanced-profile rejection and correct doctor warning readiness
+to the v1.5 release contract. The 1.5.2 publication evidence below is historical.
+
 ## Supported release contract
 
 Local MCP Toolbox v1.5 is a local, single-operator, read-only inspection server.
@@ -31,7 +34,7 @@ The only intentional server writes are its own audit records and rotation.
 Use a fresh directory and the published tag, not an existing working environment:
 
 ```powershell
-git clone --branch v1.5.2 https://github.com/chriswayneh/local-mcp-toolbox.git
+git clone --branch v1.5.3 https://github.com/chriswayneh/local-mcp-toolbox.git
 Set-Location local-mcp-toolbox
 py -3.13 -m venv .venv
 .\.venv\Scripts\python -m pip install -e ".[dev,docker,release]"

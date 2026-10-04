@@ -3,10 +3,7 @@
 All notable changes to Local MCP Toolbox are documented here. The project uses
 [Semantic Versioning](https://semver.org/).
 
-## Unreleased
-
-These changes are on `main` and are not part of the v1.5.2 tag. No new release
-was published.
+## [1.5.3] - 2026-10-04
 
 - Reject `profile: advanced` when configuration is loaded. It is not an elevated
   mode.
