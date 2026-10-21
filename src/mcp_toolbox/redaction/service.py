@@ -52,7 +52,10 @@ class Redactor:
         ),
         _Rule(
             "PASSWORD",
-            re.compile(r"(?i)(?:password|passwd|pwd)\s*[:=]\s*['\"]?(?P<secret>[^\s'\";]{4,})"),
+            re.compile(
+                r"(?i)(?:password|passwd|pwd)['\"]?\s*[:=]\s*['\"]?"
+                r"(?P<secret>[^\s'\";,}]{4,})"
+            ),
         ),
         _Rule(
             "CONNECTION_PASSWORD",
@@ -92,6 +95,11 @@ class Redactor:
                 r"(?im)(?:authorization|proxy-authorization)\s*:\s*(?P<secret>[^\r\n]{1,2048})"
             ),
         ),
+    )
+    # Mapping keys whose string values are always secrets, whatever the value looks like.
+    _SENSITIVE_KEY = re.compile(
+        r"(?i)(?:password|passwd|passphrase|pwd|secret|token|api[-_]?key|private[-_]?key"
+        r"|authorization|cookie|credential)"
     )
     _PRIVATE_KEY_BEGIN = re.compile(r"-----BEGIN(?: [A-Z0-9]+)* PRIVATE KEY-----")
     _PRIVATE_KEY_END = re.compile(r"-----END(?: [A-Z0-9]+)* PRIVATE KEY-----")
@@ -163,6 +171,9 @@ class Redactor:
             count = 0
             for key, item in value.items():
                 safe_item, item_count = self.redact_value(item)
+                if item_count == 0 and self._is_sensitive_string(str(key), item):
+                    # No pattern matched, but the key says the value is a secret.
+                    safe_item, item_count = "[REDACTED_SENSITIVE_FIELD]", 1
                 redacted[str(key)] = safe_item
                 count += item_count
             return redacted, count
@@ -175,6 +186,17 @@ class Redactor:
                 count += item_count
             return items, count
         return value, 0
+
+    @classmethod
+    def _is_sensitive_string(cls, key: str, item: Any) -> bool:
+        """Return True for a non-empty string stored under a secret-looking key."""
+
+        return (
+            isinstance(item, str)
+            and bool(item)
+            and not item.startswith("[REDACTED_")
+            and cls._SENSITIVE_KEY.search(key) is not None
+        )
 
     @staticmethod
     def fingerprint(secret: str) -> str:

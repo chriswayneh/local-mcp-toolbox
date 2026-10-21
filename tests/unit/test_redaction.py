@@ -116,3 +116,40 @@ def test_public_ssh_key_is_not_redacted() -> None:
 
         assert result.text == value
         assert result.redaction_count == 0
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        '{"password": "hunter2-json"}',
+        "{'password': 'hunter2-json'}",
+        '{"db_passwd":"hunter2-json","user":"app"}',
+        "password: hunter2-json",
+    ],
+)
+def test_redacts_quoted_json_and_yaml_password_keys(text: str) -> None:
+    result = Redactor().redact(text)
+
+    assert "hunter2-json" not in result.text
+    assert "[REDACTED_PASSWORD]" in result.text
+    assert result.redaction_count == 1
+
+
+def test_redacts_string_values_under_sensitive_mapping_keys() -> None:
+    payload = {
+        "username": "app",
+        "Password": "short",
+        "nested": {"client_secret": "abc", "api_key": "k1", "note": "hello"},
+        "retries": 3,
+        "token_count": 12,
+    }
+
+    redacted, count = Redactor().redact_value(payload)
+
+    assert redacted["username"] == "app"
+    assert redacted["Password"] == "[REDACTED_SENSITIVE_FIELD]"
+    assert redacted["nested"]["client_secret"] == "[REDACTED_SENSITIVE_FIELD]"
+    assert redacted["nested"]["api_key"] == "[REDACTED_SENSITIVE_FIELD]"
+    assert redacted["nested"]["note"] == "hello"
+    assert redacted["token_count"] == 12
+    assert count == 3

@@ -3,6 +3,15 @@
 All notable changes to Local MCP Toolbox are documented here. The project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+- Passwords written as JSON, such as `"password": "hunter2"`, are now redacted.
+  Before, the password rule only matched `password=...` or `password: ...`, so
+  quoted JSON keys slipped through. Also, in structured data, any text value
+  under a secret-named key (`password`, `secret`, `token`, `api_key`, and
+  similar) is now replaced with `[REDACTED_SENSITIVE_FIELD]` even when the value
+  does not look like a known secret format.
+
 ## [1.5.3] - 2026-10-04
 
 - Reject `profile: advanced` when configuration is loaded. It is not an elevated
