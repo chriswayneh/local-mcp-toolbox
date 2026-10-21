@@ -146,7 +146,13 @@ def register_security_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[
                 remediation="Use scanner='bandit' or inspect security_scanner_inventory.",
             )
         root = _require_security_root(runtime, repository)
-        findings = _parse_bandit_findings(runner.run_bandit(root).stdout, root)
+        raw_findings = _parse_bandit_findings(runner.run_bandit(root).stdout)
+        findings = [
+            _normalize_bandit_finding(finding, root)
+            for finding in raw_findings
+            if _finding_is_authorized(runtime, finding, root)
+        ]
+        withheld = len(raw_findings) - len(findings)
         page = findings[:result_limit]
         return bounded_response(
             runtime,
@@ -156,6 +162,7 @@ def register_security_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[
                 "findings": page,
                 "total_findings": len(findings),
                 "truncated_findings": len(findings) > result_limit,
+                "withheld_findings": withheld,
             },
         )
 
@@ -200,7 +207,7 @@ def _bandit_command_prefix() -> list[str] | None:
     return [executable] if executable is not None else None
 
 
-def _parse_bandit_findings(output: str, root: Path) -> list[dict[str, Any]]:
+def _parse_bandit_findings(output: str) -> list[dict[str, Any]]:
     try:
         report = json.loads(output)
     except json.JSONDecodeError as error:
@@ -216,19 +223,31 @@ def _parse_bandit_findings(output: str, root: Path) -> list[dict[str, Any]]:
             "Bandit returned an unexpected report structure.",
             remediation="Update Bandit or confirm its JSON output is supported.",
         )
-    return [
-        _normalize_bandit_finding(finding, root)
-        for finding in raw_findings
-        if isinstance(finding, dict)
-    ]
+    return [finding for finding in raw_findings if isinstance(finding, dict)]
+
+
+def _finding_is_authorized(runtime: ServerRuntime, finding: dict[str, Any], root: Path) -> bool:
+    """Keep a finding only if its file resolves inside the scan root and passes the path policy.
+
+    Bandit recurses on its own and follows file symlinks, so it can report on files outside the
+    approved root or files that match a blocked pattern. Those findings are withheld.
+    """
+
+    filename = finding.get("filename")
+    if not isinstance(filename, str) or not filename:
+        return False
+    try:
+        canonical = Path(filename).resolve(strict=False)
+    except OSError:
+        return False
+    if not canonical.is_relative_to(root):
+        return False
+    return runtime.permissions.security.check_path(canonical).allowed
 
 
 def _normalize_bandit_finding(finding: dict[str, Any], root: Path) -> dict[str, Any]:
     filename = str(finding.get("filename", ""))
-    try:
-        safe_path = Path(filename).resolve(strict=False).relative_to(root).as_posix()
-    except ValueError:
-        safe_path = Path(filename).name
+    safe_path = Path(filename).resolve(strict=False).relative_to(root).as_posix()
     return {
         "finding_id": finding.get("test_id"),
         "source": "bandit",

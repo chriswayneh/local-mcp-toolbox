@@ -153,7 +153,7 @@ Log output is untrusted data and is redacted before it reaches the client or aud
 | Tool | Inputs | Output | Safety controls |
 | --- | --- | --- | --- |
 | `security_scanner_inventory` | None | Availability of a fixed scanner allowlist | Resolves availability only; it does not execute a scanner or disclose executable paths. |
-| `security_scan_repository` | Absolute approved `repository`, optional bounded `limit`, scanner fixed to `bandit` | Normalized Bandit findings without source-code excerpts | Requires explicit opt-in and a separate approved root. Uses only `bandit -q -r <root> -f json` without a shell, timeout/output limits, and central redaction. |
+| `security_scan_repository` | Absolute approved `repository`, optional bounded `limit`, scanner fixed to `bandit` | Normalized Bandit findings without source-code excerpts | Requires explicit opt-in and a separate approved root. Uses only `bandit -q -r <root> -f json` without a shell, timeout/output limits, and central redaction. Findings for files that resolve outside the approved root (for example through a symlink) or match a blocked pattern are dropped and counted in `withheld_findings`. |
 
 Enable the adapter only for the smallest scan root set:
 

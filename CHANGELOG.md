@@ -3,6 +3,15 @@
 All notable changes to Local MCP Toolbox are documented here. The project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+- `security_scan_repository` no longer reports findings for files outside the
+  approved scan root or files that match a blocked pattern. Bandit follows
+  symlinks on its own, so a link inside the root could pull in a file from
+  elsewhere, and the result used to show it by file name. Those findings are
+  now left out, and the response has a `withheld_findings` count so you can
+  see that some were skipped.
+
 ## [1.5.3] - 2026-10-04
 
 - Reject `profile: advanced` when configuration is loaded. It is not an elevated
