@@ -119,3 +119,47 @@ def _git(repository: Path, *arguments: str) -> None:
         capture_output=True,
         text=True,
     )
+
+
+@pytest.mark.skipif(shutil.which("sh") is None, reason="POSIX shell required for the probe")
+def test_git_tools_ignore_repository_config_that_runs_programs(
+    tmp_path: Path, git_repository: Path
+) -> None:
+    marker = tmp_path / "repo-config-ran"
+    probe = tmp_path / "probe.sh"
+    probe.write_text(f"#!/bin/sh\necho ran >> '{marker}'\n", encoding="utf-8")
+    probe.chmod(0o755)
+    hooks = git_repository / ".git" / "hooks"
+    for hook in ("post-index-change", "pre-commit"):
+        (hooks / hook).write_text(probe.read_text(encoding="utf-8"), encoding="utf-8")
+        (hooks / hook).chmod(0o755)
+    (git_repository / ".gitattributes").write_text("*.md diff=probe\n", encoding="utf-8")
+    _git(git_repository, "config", "core.fsmonitor", str(probe))
+    _git(git_repository, "config", "diff.external", str(probe))
+    _git(git_repository, "config", "diff.probe.textconv", str(probe))
+    _git(git_repository, "config", "diff.probe.command", str(probe))
+    index = git_repository / ".git" / "index"
+    index_before = index.read_bytes()
+
+    server = create_server(
+        build_runtime(
+            ToolboxSettings(
+                profile=PermissionProfile.STANDARD,
+                filesystem=FilesystemSettings(approved_roots=[tmp_path]),
+                integrations=IntegrationSettings(git=True),
+                git=GitSettings(approved_repositories=[git_repository]),
+                audit=AuditSettings(path=tmp_path / "audit" / "events.jsonl"),
+            )
+        )
+    )
+
+    async def scenario() -> None:
+        async with Client(server) as client:
+            for tool in ("git_repository_status", "git_diff_summary", "git_current_branch"):
+                result = await client.call_tool(tool, {"repository": str(git_repository)})
+                assert result.is_error is False
+
+    asyncio.run(scenario())
+
+    assert not marker.exists(), "repository config made Git run a program"
+    assert index.read_bytes() == index_before, "read-only Git inspection rewrote the index"

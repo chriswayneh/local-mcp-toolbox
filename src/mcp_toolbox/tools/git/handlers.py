@@ -18,6 +18,15 @@ from mcp_toolbox.tools.common import bounded_response, require_bounded_limit
 
 _FIELD_SEPARATOR = "\x1f"
 _RECORD_SEPARATOR = "\x1e"
+# Repository-local config is controlled by whoever wrote the repository. These overrides
+# win over it and stop Git from running repo-chosen programs or writing to the repository.
+_SAFE_CONFIG_OVERRIDES = (
+    "core.fsmonitor=false",
+    f"core.hooksPath={os.devnull}",
+    "core.untrackedCache=false",
+    "diff.external=",
+    "status.submoduleSummary=false",
+)
 _READ_ONLY = ToolAnnotations(
     read_only_hint=True,
     destructive_hint=False,
@@ -50,7 +59,7 @@ class GitRunner:
                 remediation="Install Git or disable the Git integration.",
             )
 
-        command = [executable, "-C", str(repository), *arguments]
+        command = [executable, *_safe_config_arguments(), "-C", str(repository), *arguments]
         try:
             # The command is assembled only from the resolved Git executable, approved repository,
             # and fixed read-only templates declared by this module.
@@ -188,7 +197,9 @@ def register_git_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[str, 
         """Return only Git diffstat metadata for tracked, unstaged changes."""
 
         repo = _require_repository(runtime, repository)
-        lines = runner.run(repo, ["diff", "--numstat"]).stdout.splitlines()
+        lines = runner.run(
+            repo, ["diff", "--numstat", "--no-ext-diff", "--no-textconv"]
+        ).stdout.splitlines()
         files = [
             parsed for line in lines if line and (parsed := _parse_numstat_line(line)) is not None
         ]
@@ -209,8 +220,17 @@ def _require_repository(runtime: ServerRuntime, requested_path: str) -> Path:
     return runtime.permissions.require_git_repository(Path(requested_path))
 
 
+def _safe_config_arguments() -> list[str]:
+    """Return ``-c`` overrides that neutralize repository-controlled command execution."""
+
+    arguments: list[str] = []
+    for override in _SAFE_CONFIG_OVERRIDES:
+        arguments.extend(["-c", override])
+    return arguments
+
+
 def _safe_git_environment() -> dict[str, str]:
-    """Keep Git non-interactive and prevent user/system config from injecting behavior."""
+    """Keep Git non-interactive, read-only, and free of user/system config injection."""
 
     environment = {"PATH": os.environ.get("PATH", ""), "GIT_TERMINAL_PROMPT": "0"}
     for name in ("SYSTEMROOT", "WINDIR", "PATHEXT"):
@@ -218,6 +238,8 @@ def _safe_git_environment() -> dict[str, str]:
             environment[name] = value
     environment["GIT_CONFIG_NOSYSTEM"] = "1"
     environment["GIT_CONFIG_GLOBAL"] = os.devnull
+    # Stop `git status` from refreshing the index or taking index.lock in the repository.
+    environment["GIT_OPTIONAL_LOCKS"] = "0"
     return environment
 
 

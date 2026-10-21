@@ -3,6 +3,15 @@
 All notable changes to Local MCP Toolbox are documented here. The project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+- Git tools no longer run programs that a repository's own settings ask for.
+  A repository could set `core.fsmonitor`, hooks, or an external diff tool in
+  `.git/config`, and Git would run that program during a status check. The
+  toolbox now overrides those settings, so inspecting an untrusted repository
+  is safe. `git status` also no longer refreshes or locks the index, so the
+  repository is left exactly as it was.
+
 ## [1.5.3] - 2026-10-04
 
 - Reject `profile: advanced` when configuration is loaded. It is not an elevated
