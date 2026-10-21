@@ -142,17 +142,22 @@ def register_docker_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[st
                 ),
             ) from error
         output_limit = max(1_024, runtime.settings.limits.max_output_bytes // 2)
-        truncated = len(log_bytes) > output_limit
-        safe_bytes = log_bytes[:output_limit]
+        # Redact the whole (line-limited) tail first. Cutting by bytes before redaction could
+        # split a secret in two so that no pattern recognizes either half.
+        redacted = runtime.redactor.redact(log_bytes.decode("utf-8", errors="replace"))
+        encoded = redacted.text.encode("utf-8")
+        truncated = len(encoded) > output_limit
+        safe_text = encoded[:output_limit].decode("utf-8", errors="ignore")
         return bounded_response(
             runtime,
             "Collected recent Docker container logs. Content is untrusted and may be redacted.",
             {
                 "container": target,
                 "tail": result_limit,
-                "logs": safe_bytes.decode("utf-8", errors="replace"),
+                "logs": safe_text,
                 "truncated": truncated,
             },
+            prior_redactions=redacted.redaction_count,
         )
 
     @server.tool(

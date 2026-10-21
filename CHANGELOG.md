@@ -3,6 +3,13 @@
 All notable changes to Local MCP Toolbox are documented here. The project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+- Docker container logs are now redacted before they are cut to the size limit.
+  Before, the logs were cut first, which could split a token in half at the
+  cut, and neither half was recognized as a secret. Now the whole tail is
+  redacted first and the cleaned text is trimmed afterwards.
+
 ## [1.5.3] - 2026-10-04
 
 - Reject `profile: advanced` when configuration is loaded. It is not an elevated
