@@ -59,9 +59,9 @@ class AuditMiddleware:
             duration_ms = timer.elapsed_ms()
             self._audit.record(
                 AuditEvent(
-                    request_id=str(context.request_id),
-                    tool_name=tool_name,
-                    tool_module=tool_module,
+                    request_id=_bounded_identifier(str(context.request_id), 200),
+                    tool_name=_bounded_identifier(tool_name, 200),
+                    tool_module=_bounded_identifier(tool_module, 100),
                     input_summary=self._input_summary(context.params),
                     result_status=status,
                     duration_ms=duration_ms,
@@ -175,3 +175,15 @@ class AuditMiddleware:
             return None
         identifier = f"{name}/{version}" if isinstance(version, str) else name
         return identifier[:200]
+
+
+def _bounded_identifier(value: str, max_length: int) -> str:
+    """Fit a client-chosen identifier into an audit field without failing the request.
+
+    JSON-RPC ids and tool names have no length limit. An over-long value is replaced by a
+    stable digest so the audit event still validates and the same id still correlates.
+    """
+
+    if 0 < len(value) <= max_length:
+        return value
+    return f"sha256:{sha256(value.encode('utf-8')).hexdigest()}"[:max_length]

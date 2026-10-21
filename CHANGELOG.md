@@ -3,6 +3,13 @@
 All notable changes to Local MCP Toolbox are documented here. The project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+- A very long request id or tool name from a client no longer breaks the
+  request or skips the audit record. Ids and tool names longer than the audit
+  field allows are stored as a short `sha256:` digest. The same id always gets
+  the same digest, so you can still match related audit lines.
+
 ## [1.5.3] - 2026-10-04
 
 - Reject `profile: advanced` when configuration is loaded. It is not an elevated
