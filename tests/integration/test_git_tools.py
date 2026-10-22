@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import shutil
+import stat
 import subprocess
 from pathlib import Path
 
@@ -212,11 +214,17 @@ def _assert_every_git_tool_refused(tmp_path: Path, repository: Path) -> None:
     asyncio.run(scenario())
 
 
+def _make_writable_and_retry(function, path, _error):  # type: ignore[no-untyped-def]
+    # Git marks object files read-only; Windows refuses to delete them until that is cleared.
+    os.chmod(path, stat.S_IWRITE)
+    function(path)
+
+
 def test_commondir_pointing_outside_is_refused(tmp_path: Path, git_repository: Path) -> None:
     outside = _outside_repository(tmp_path)
     git_dir = git_repository / ".git"
-    shutil.rmtree(git_dir / "refs")
-    shutil.rmtree(git_dir / "objects")
+    shutil.rmtree(git_dir / "refs", onexc=_make_writable_and_retry)
+    shutil.rmtree(git_dir / "objects", onexc=_make_writable_and_retry)
     (git_dir / "commondir").write_text(f"{outside / '.git'}\n", encoding="utf-8")
     (git_dir / "HEAD").write_text("ref: refs/heads/master\n", encoding="utf-8")
     # Sanity check: plain Git really follows commondir to the outside repository.
