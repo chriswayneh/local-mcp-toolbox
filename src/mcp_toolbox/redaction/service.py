@@ -42,10 +42,13 @@ def _keyed_rules(category: str, key: str) -> tuple[_Rule, _Rule]:
     quoted = _Rule(
         category,
         re.compile(
-            prefix + r"(?P<quote>['\"])"
+            # Only `key: "value"` (JSON, YAML, dict reprs). With `key=` an opening quote
+            # proves nothing about where the value ends, so the unquoted rule takes the line.
+            rf"(?im){key}['\"]?[ \t]*:[ \t]*" + r"(?P<quote>['\"])"
             r"(?!\[REDACTED_[A-Z_]+\](?P=quote))"
             r"(?P<secret>(?:\\[^\r\n]|(?P=quote)(?P=quote)|(?!(?P=quote))[^\\\r\n])+)"
-            r"(?P=quote)(?!(?P=quote))"
+            # The closing quote must end the value; otherwise the unquoted rule takes the line.
+            r"(?P=quote)(?=[\s,;}\]):]|$)"
         ),
     )
     unquoted = _Rule(
@@ -54,7 +57,9 @@ def _keyed_rules(category: str, key: str) -> tuple[_Rule, _Rule]:
             prefix
             + r"(?!['\"]?"
             + _MARKER_AHEAD
-            + r")(?P<secret>\S(?:(?!\[REDACTED_[A-Z_]+\])[^\r\n])*)"
+            + r")(?P<secret>\S(?:(?!"
+            + _MARKER_AHEAD
+            + r")[^\r\n])*)"
         ),
     )
     return quoted, unquoted

@@ -235,3 +235,9 @@ def test_quoted_password_rule_stays_linear_on_long_lines() -> None:
     Redactor().redact('password: "' + "\\\\" * 60_000 + "x" * 60_000)
     Redactor().redact("password='" + "a" * 120_000)
     assert time.perf_counter() - started < 2
+
+
+def test_value_that_only_starts_with_a_quoted_part_is_fully_redacted() -> None:
+    result = Redactor().redact("password='0'000tail")
+
+    assert "000tail" not in result.text
