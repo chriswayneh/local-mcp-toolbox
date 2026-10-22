@@ -88,7 +88,15 @@ Git inspection is pinned to the approved repository's own `.git` directory: expl
 
 - **Hardlinked packs or loose objects.** A hard link is indistinguishable from the original file, so an attacker who can hardlink another repository's pack or object into the approved one can expose it. Hard links cannot cross filesystems and need write access to the target directory.
 - **Loose-object files.** To keep the check independent of repository size, files inside `objects/xx` are not walked; a symlink there whose name matches a reachable object hash can be read.
-- **Swap races outside Linux.** On macOS and Windows the guard is a fingerprint (identity and mtime of every object and ref directory) taken before exec and compared after Git exits. A swap that is reverted within the filesystem's timestamp granularity while Git runs can go unnoticed. Alternate stores inside the repository are opened by resolved path and share this race on every platform.
+- **Alternate stores inside the repository.** These are opened by their resolved path, so a swap of one of them while Git runs is only caught if it changes a folder's timestamp.
+
+### Git platform support
+
+**The Git tools run on Linux only.** On macOS and Windows every Git tool refuses with an `UNSUPPORTED_OPERATION` error that says so, and Git is never started.
+
+Why: on Linux, the toolbox opens the repository's object folders itself, without following symlinks, and hands Git those open folders. Someone who swaps a folder for a symlink while Git is running can't change what Git reads. macOS and Windows have no reliable way to do this. The only check there would compare the folders before and after Git runs, and a swap that is quickly undone can be missed. Data from another repository could then be returned, so the tools refuse instead of risking it.
+
+What to do: if you need the Git tools on a Mac or Windows machine, run the toolbox in the provided Linux container (`compose.yaml`) and approve the repository path inside it. Progress on native support is tracked in [issue #44](https://github.com/chriswayneh/local-mcp-toolbox/issues/44).
 
 GitHub inspection requires the GitHub integration, external-network access, and an exact case-insensitive `owner/repository` allowlist. Requests use `GET` only against the fixed `https://api.github.com` origin. Tokens are read from `GITHUB_TOKEN`, used only as an authorization header, and excluded from responses and audit records.
 

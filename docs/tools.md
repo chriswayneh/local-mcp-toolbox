@@ -40,6 +40,8 @@ The `restricted` default includes no approved roots, so filesystem requests are 
 
 ## Git
 
+**Linux only.** On macOS and Windows every Git tool returns an `UNSUPPORTED_OPERATION` error and Git is never started. Use the Linux container on those hosts. See [Git platform support](security-model.md#git-platform-support).
+
 | Tool | Inputs | Output | Safety controls |
 | --- | --- | --- | --- |
 | `git_repository_status` | Absolute approved `repository` path | Current branch tracking metadata and bounded changed-file status | Requires Git integration, filesystem-root containment, and exact repository allowlist match. Uses `git status --porcelain=v1 --branch`. |

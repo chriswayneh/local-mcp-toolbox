@@ -37,8 +37,13 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
   exec a cheap fingerprint of object and ref directories must still match, and
   loose-object files are no longer walked, so the cost does not grow with the
   number of loose objects. Accepted risks (hardlinked packs or objects, symlinked
-  loose-object files, and timestamp-granularity races on macOS and Windows) are
+  loose-object files, and alternate stores inside the repository) are
   documented in the security model.
+- **Git tools are now Linux-only.** On macOS and Windows they refuse with
+  `UNSUPPORTED_OPERATION` and never start Git, because there a `.git` folder
+  swapped and quickly swapped back while Git runs could go unnoticed and leak
+  another repository's data. Run the toolbox in the Linux container to use them
+  on those hosts. Tracked in [#44](https://github.com/chriswayneh/local-mcp-toolbox/issues/44).
 
 ## [1.5.3] - 2026-10-04
 

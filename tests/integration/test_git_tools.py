@@ -22,6 +22,11 @@ from mcp_toolbox.config.settings import (
 )
 from mcp_toolbox.server import build_runtime, create_server
 
+# Git tools refuse to run outside Linux (see test_git_platform.py), so these tests need Linux.
+pytestmark = pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="Git tools are supported on Linux only"
+)
+
 
 @pytest.fixture()
 def git_repository(tmp_path: Path) -> Path:

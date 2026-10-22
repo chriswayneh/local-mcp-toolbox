@@ -60,6 +60,19 @@ class GitRunner:
     def run(self, repository: Path, arguments: list[str]) -> GitCommandResult:
         """Run preassembled Git arguments with a scrubbed environment and bounded output."""
 
+        if not _FD_PATHS:
+            # Without descriptor pinning a .git swap that is undone while Git runs can go
+            # unnoticed, so output could leak. Refuse instead of running Git at all.
+            raise ToolboxError(
+                ErrorCategory.UNSUPPORTED_OPERATION,
+                "Git tools are not supported on this operating system (only Linux). On macOS "
+                "and Windows, a repository could be swapped while Git runs and leak data from "
+                "another repository.",
+                remediation=(
+                    "Run the toolbox on Linux (for example in the provided container) to use "
+                    "the Git tools. See docs/security-model.md#git-platform-support."
+                ),
+            )
         executable = shutil.which("git")
         if executable is None:
             raise ToolboxError(
