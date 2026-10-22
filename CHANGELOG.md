@@ -12,6 +12,14 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
   toolbox now overrides those settings, so inspecting an untrusted repository
   is safe. `git status` also no longer refreshes or locks the index, so the
   repository is left exactly as it was.
+- Recent-commit inspection passes `--no-show-signature`, so a repository that
+  sets `log.showSignature` and `gpg.program` cannot make the toolbox run its
+  chosen signature verifier.
+- Status and diff summaries no longer look inside submodule work trees
+  (`--ignore-submodules=dirty`), because a submodule's own config, such as a
+  filter driver defined only there, is not covered by the parent overrides. A
+  submodule whose checked-out commit moved is still reported; uncommitted edits
+  inside a submodule are not.
 
 ## [1.5.3] - 2026-10-04
 

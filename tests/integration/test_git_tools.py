@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -171,3 +172,123 @@ def test_git_tools_ignore_repository_config_that_runs_programs(
 
     assert not marker.exists(), "repository config made Git run a program"
     assert index.read_bytes() == index_before, "read-only Git inspection rewrote the index"
+
+
+def _git_output(repository: Path, *arguments: str, stdin: str | None = None) -> str:
+    return subprocess.run(
+        ["git", "-C", str(repository), *arguments],
+        check=True,
+        shell=False,
+        capture_output=True,
+        text=True,
+        input=stdin,
+    ).stdout.strip()
+
+
+def _write_probe(tmp_path: Path, marker: Path) -> Path:
+    probe = tmp_path / "probe.sh"
+    probe.write_text(f"#!/bin/sh\necho ran >> '{marker}'\ncat >/dev/null\n", encoding="utf-8")
+    probe.chmod(0o755)
+    return probe
+
+
+def _git_server(tmp_path: Path, repository: Path) -> object:
+    return create_server(
+        build_runtime(
+            ToolboxSettings(
+                profile=PermissionProfile.STANDARD,
+                filesystem=FilesystemSettings(approved_roots=[tmp_path]),
+                integrations=IntegrationSettings(git=True),
+                git=GitSettings(approved_repositories=[repository]),
+                audit=AuditSettings(path=tmp_path / "audit" / "events.jsonl"),
+            )
+        )
+    )
+
+
+@pytest.mark.skipif(shutil.which("sh") is None, reason="POSIX shell required for the probe")
+def test_recent_commits_never_runs_a_repository_signature_verifier(
+    tmp_path: Path, git_repository: Path
+) -> None:
+    marker = tmp_path / "verifier-ran"
+    probe = _write_probe(tmp_path, marker)
+    # Write a commit object carrying a gpgsig header so `git log` has a signature to verify.
+    tree = _git_output(git_repository, "rev-parse", "HEAD^{tree}")
+    parent = _git_output(git_repository, "rev-parse", "HEAD")
+    signature = "\n ".join(
+        ["-----BEGIN PGP SIGNATURE-----", "", "iQEzBAABCAAdFiEEfake", "-----END PGP SIGNATURE-----"]
+    )
+    commit = (
+        f"tree {tree}\nparent {parent}\n"
+        "author Toolbox Test <toolbox@example.test> 1700000000 +0000\n"
+        "committer Toolbox Test <toolbox@example.test> 1700000000 +0000\n"
+        f"gpgsig {signature}\n\nSigned commit\n"
+    )
+    signed = _git_output(
+        git_repository, "hash-object", "-t", "commit", "-w", "--stdin", stdin=commit
+    )
+    _git(git_repository, "update-ref", "HEAD", signed)
+    _git(git_repository, "config", "log.showSignature", "true")
+    _git(git_repository, "config", "gpg.program", str(probe))
+    _git(git_repository, "config", "gpg.format", "openpgp")
+    # Sanity check: a plain `git log` in this repository does run the verifier.
+    _git(git_repository, "log", "-1")
+    assert marker.exists(), "fixture did not make git log run the verifier"
+    marker.unlink()
+
+    server = _git_server(tmp_path, git_repository)
+
+    async def scenario() -> None:
+        async with Client(server) as client:  # type: ignore[arg-type]
+            result = await client.call_tool(
+                "git_recent_commits", {"repository": str(git_repository), "limit": 5}
+            )
+            assert result.is_error is False
+            subjects = [c["subject"] for c in result.structured_content["data"]["commits"]]
+            assert subjects[0] == "Signed commit"
+
+    asyncio.run(scenario())
+
+    assert not marker.exists(), "git_recent_commits ran a repository-chosen signature verifier"
+
+
+@pytest.mark.skipif(shutil.which("sh") is None, reason="POSIX shell required for the probe")
+def test_status_and_diff_never_run_filters_defined_only_in_a_submodule(
+    tmp_path: Path, git_repository: Path
+) -> None:
+    marker = tmp_path / "submodule-filter-ran"
+    probe = _write_probe(tmp_path, marker)
+    child = tmp_path / "child-source"
+    child.mkdir()
+    _git(child, "init")
+    _git(child, "config", "user.name", "Toolbox Test")
+    _git(child, "config", "user.email", "toolbox@example.test")
+    (child / ".gitattributes").write_text("*.txt filter=childonly\n", encoding="utf-8")
+    (child / "data.txt").write_text("one\n", encoding="utf-8")
+    _git(child, "add", ".")
+    _git(child, "commit", "-m", "child")
+    _git(git_repository, "-c", "protocol.file.allow=always", "submodule", "add", str(child), "sub")
+    _git(git_repository, "commit", "-m", "add submodule")
+    submodule = git_repository / "sub"
+    _git(submodule, "config", "filter.childonly.clean", str(probe))
+    # Same size, newer mtime: Git must run the clean filter to tell whether it changed.
+    data = submodule / "data.txt"
+    data.write_text("uno\n", encoding="utf-8")
+    stat = data.stat()
+    os.utime(data, (stat.st_atime + 5, stat.st_mtime + 5))
+    # Sanity check: a plain `git status` in the parent does run the submodule's filter.
+    _git(git_repository, "status")
+    assert marker.exists(), "fixture did not make git status run the submodule filter"
+    marker.unlink()
+
+    server = _git_server(tmp_path, git_repository)
+
+    async def scenario() -> None:
+        async with Client(server) as client:  # type: ignore[arg-type]
+            for tool in ("git_repository_status", "git_diff_summary"):
+                result = await client.call_tool(tool, {"repository": str(git_repository)})
+                assert result.is_error is False
+
+    asyncio.run(scenario())
+
+    assert not marker.exists(), "Git tools ran a filter defined only in a submodule"

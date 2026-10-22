@@ -26,6 +26,10 @@ _SAFE_CONFIG_OVERRIDES = (
     "core.untrackedCache=false",
     "diff.external=",
     "status.submoduleSummary=false",
+    "log.showSignature=false",
+    # Never descend into submodule work trees: a submodule's own config (filters, fsmonitor,
+    # hooks) is invisible to the parent-level overrides above.
+    "diff.ignoreSubmodules=dirty",
 )
 _READ_ONLY = ToolAnnotations(
     read_only_hint=True,
@@ -123,7 +127,9 @@ def register_git_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[str, 
         """Inspect branch state and changed-file counts without reading diff contents."""
 
         repo = _require_repository(runtime, repository)
-        lines = runner.run(repo, ["status", "--porcelain=v1", "--branch"]).stdout.splitlines()
+        lines = runner.run(
+            repo, ["status", "--porcelain=v1", "--branch", "--ignore-submodules=dirty"]
+        ).stdout.splitlines()
         branch = (
             _parse_branch(lines[0])
             if lines
@@ -181,6 +187,7 @@ def register_git_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[str, 
             repo,
             [
                 "log",
+                "--no-show-signature",
                 f"--max-count={result_limit}",
                 f"--format=%H{_FIELD_SEPARATOR}%h{_FIELD_SEPARATOR}%an{_FIELD_SEPARATOR}%aI{_FIELD_SEPARATOR}%s{_RECORD_SEPARATOR}",
             ],
@@ -202,7 +209,8 @@ def register_git_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[str, 
 
         repo = _require_repository(runtime, repository)
         lines = runner.run(
-            repo, ["diff", "--numstat", "--no-ext-diff", "--no-textconv"]
+            repo,
+            ["diff", "--numstat", "--no-ext-diff", "--no-textconv", "--ignore-submodules=dirty"],
         ).stdout.splitlines()
         files = [
             parsed for line in lines if line and (parsed := _parse_numstat_line(line)) is not None
