@@ -6,7 +6,8 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
 ## [Unreleased]
 
 - Git tools no longer run programs that a repository's own settings ask for.
-  A repository could set `core.fsmonitor`, hooks, or an external diff tool in
+  A repository could set `core.fsmonitor`, hooks, an external diff tool, or a `.gitattributes` filter
+  driver (`filter.*.clean`/`process`) in
   `.git/config`, and Git would run that program during a status check. The
   toolbox now overrides those settings, so inspecting an untrusted repository
   is safe. `git status` also no longer refreshes or locks the index, so the

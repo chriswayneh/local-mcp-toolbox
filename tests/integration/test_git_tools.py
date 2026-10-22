@@ -138,6 +138,14 @@ def test_git_tools_ignore_repository_config_that_runs_programs(
     _git(git_repository, "config", "diff.external", str(probe))
     _git(git_repository, "config", "diff.probe.textconv", str(probe))
     _git(git_repository, "config", "diff.probe.command", str(probe))
+    (git_repository / ".gitattributes").write_text(
+        "*.md diff=probe filter=probe\n*.txt filter=probe\n", encoding="utf-8"
+    )
+    _git(git_repository, "config", "filter.probe.clean", str(probe))
+    _git(git_repository, "config", "filter.probe.process", str(probe))
+    for tracked in git_repository.iterdir():
+        if tracked.is_file():
+            tracked.write_text(tracked.read_text(encoding="utf-8") + "changed\n", encoding="utf-8")
     index = git_repository / ".git" / "index"
     index_before = index.read_bytes()
 

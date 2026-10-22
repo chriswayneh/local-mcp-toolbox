@@ -59,7 +59,11 @@ class GitRunner:
                 remediation="Install Git or disable the Git integration.",
             )
 
-        command = [executable, *_safe_config_arguments(), "-C", str(repository), *arguments]
+        overrides = [
+            *_safe_config_arguments(),
+            *_filter_driver_overrides(executable, repository, self._runtime),
+        ]
+        command = [executable, *overrides, "-C", str(repository), *arguments]
         try:
             # The command is assembled only from the resolved Git executable, approved repository,
             # and fixed read-only templates declared by this module.
@@ -226,6 +230,54 @@ def _safe_config_arguments() -> list[str]:
     arguments: list[str] = []
     for override in _SAFE_CONFIG_OVERRIDES:
         arguments.extend(["-c", override])
+    return arguments
+
+
+def _filter_driver_overrides(
+    executable: str, repository: Path, runtime: ServerRuntime
+) -> list[str]:
+    """Blank every configured filter driver so ``.gitattributes`` cannot run clean/process commands.
+
+    Filter driver names are chosen by the repository, so they cannot be listed in the fixed
+    overrides. Reading config with ``git config`` never runs a driver.
+    """
+
+    try:
+        completed = subprocess.run(  # noqa: S603  # nosec B603
+            [
+                executable,
+                "-C",
+                str(repository),
+                "config",
+                "--name-only",
+                "--get-regexp",
+                r"^filter\..*\.(clean|smudge|process)$",
+            ],
+            check=False,
+            shell=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=runtime.settings.limits.timeout_seconds,
+            env=_safe_git_environment(),
+        )
+    except (subprocess.TimeoutExpired, OSError) as error:
+        raise ToolboxError(
+            ErrorCategory.INTEGRATION_UNAVAILABLE,
+            "Git configuration could not be inspected safely.",
+            remediation="Check the local Git installation and server permissions.",
+        ) from error
+    drivers: set[str] = set()
+    for name in completed.stdout.splitlines():
+        lowered = name.strip()
+        if lowered.startswith("filter.") and lowered.count(".") >= 2:
+            drivers.add(lowered[len("filter.") : lowered.rindex(".")])
+    arguments: list[str] = []
+    for driver in sorted(drivers):
+        for key in ("clean", "smudge", "process"):
+            arguments.extend(["-c", f"filter.{driver}.{key}="])
+        arguments.extend(["-c", f"filter.{driver}.required=false"])
     return arguments
 
 
