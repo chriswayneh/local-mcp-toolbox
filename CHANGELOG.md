@@ -26,6 +26,12 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
   values honor YAML's doubled-quote escape. Only an exact marker followed by a
   delimiter is skipped; `[REDACTED_X]realsecret` is redacted. URL passwords
   containing a space are redacted too.
+- A list or mapping stored under a secret-named key is now replaced as a whole
+  (before, `{"secret": ["a", "b"]}` passed through). Plain-text `privateKey`,
+  `credentials`, `pass`, and XML elements such as `<password>...</password>` are
+  redacted. An empty `"password": ""` is left intact instead of swallowing the
+  rest of the line, and name-like keys such as `tokenizer` or `private_key_path`
+  keep their values.
 
 ## [1.5.3] - 2026-10-04
 

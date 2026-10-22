@@ -55,6 +55,8 @@ def _keyed_rules(category: str, key: str) -> tuple[_Rule, _Rule]:
         category,
         re.compile(
             prefix
+            # An empty quoted value (``""``) holds nothing to leak; keep its quotes and the line.
+            + r"(?!\"\"|'')"
             + r"(?!['\"]?"
             + _MARKER_AHEAD
             + r")(?P<secret>\S(?:(?!"
@@ -105,6 +107,16 @@ class Redactor:
             ),
         ),
         *_keyed_rules("SECRET_ASSIGNMENT", r"(?<![a-z0-9_.-])[a-z0-9_.-]*secret[a-z0-9_.-]*"),
+        *_keyed_rules("PRIVATE_KEY_ASSIGNMENT", r"(?<![a-z0-9_.-])private[-_]?key(?![a-z0-9_.-])"),
+        *_keyed_rules("CREDENTIAL_ASSIGNMENT", r"(?<![a-z0-9_.-])credentials?(?![a-z0-9_.-])"),
+        *_keyed_rules("PASSWORD", r"(?<![a-z0-9_.-])pass(?![a-z0-9_.-])"),
+        _Rule(
+            "XML_SECRET",
+            re.compile(
+                r"(?i)<(?P<tag>password|passwd|pwd|pass|secret|token|api[-_]?key|private[-_]?key"
+                r"|credentials?)>(?!\[REDACTED_[A-Z_]+\]</)(?P<secret>[^<]+)</(?P=tag)>"
+            ),
+        ),
         _Rule(
             "COOKIE",
             re.compile(r"(?im)^(?:set-)?cookie\s*:\s*(?P<secret>[^\r\n]{1,2048})"),
@@ -121,9 +133,12 @@ class Redactor:
         ),
     )
     # Mapping keys whose string values are always secrets, whatever the value looks like.
+    # The word must end the key or be followed by a separator or a capital (camelCase), so
+    # ``tokenizer`` or ``private_key_path`` (a name, not the secret) keep their values.
     _SENSITIVE_KEY = re.compile(
         r"(?i)(?:password|passwd|passphrase|pwd|secret|token|api[-_]?key|private[-_]?key"
-        r"|authorization|cookie|credential)"
+        r"|authorization|cookie|credential)s?(?-i:(?![a-z]))"
+        r"(?![-_.]?(?:path|file|dir|name|id|type|url|env|ref)(?-i:(?![a-z])))"
     )
     # Only an exact marker counts as already redacted; a marker prefix proves nothing.
     _REDACTION_MARKER = re.compile(r"\[REDACTED_[A-Z_]+\]")
@@ -227,14 +242,14 @@ class Redactor:
 
     @classmethod
     def _is_sensitive_string(cls, key: str, item: Any) -> bool:
-        """Return True for a non-empty string stored under a secret-looking key."""
+        """Return True for a non-empty value (string, list or mapping) under a secret key."""
 
-        return (
-            isinstance(item, str)
-            and bool(item)
-            and cls._REDACTION_MARKER.fullmatch(item) is None
-            and cls._SENSITIVE_KEY.search(key) is not None
-        )
+        if isinstance(item, str):
+            if not item or cls._REDACTION_MARKER.fullmatch(item) is not None:
+                return False
+        elif not (isinstance(item, (Mapping, list, tuple)) and bool(item)):
+            return False
+        return cls._SENSITIVE_KEY.search(key) is not None
 
     @staticmethod
     def fingerprint(secret: str) -> str:
