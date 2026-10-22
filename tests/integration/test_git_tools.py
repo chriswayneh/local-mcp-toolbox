@@ -670,7 +670,7 @@ def test_pack_directory_flip_race_never_leaks_outside_commits(
 
 def test_check_cost_does_not_grow_with_loose_objects(tmp_path: Path, git_repository: Path) -> None:
     objects = git_repository / ".git" / "objects"
-    for index in range(60_000):
+    for index in range(40_000):
         fanout = objects / f"{index % 256:02x}"
         fanout.mkdir(exist_ok=True)
         (fanout / f"{index:038x}").write_bytes(b"x")
@@ -787,3 +787,61 @@ def test_pack_swapped_after_checks_is_not_read(
             assert "OTHER_SECRET" not in str(result.content) + str(result.structured_content)
 
     asyncio.run(scenario())
+
+
+def test_symlinked_loose_object_reachable_from_a_ref_is_refused(
+    tmp_path: Path, git_repository: Path
+) -> None:
+    outside = _outside_repository(tmp_path)
+    _git(outside, "commit", "--allow-empty", "-q", "-m", "OTHER_SECRET_COMMIT")
+    secret = _git_output(outside, "rev-parse", "HEAD")
+    tree = _git_output(outside, "rev-parse", "HEAD^{tree}")
+    objects = git_repository / ".git" / "objects"
+    # Link the outside commit, its tree, and its parent chain in as loose objects.
+    for sha in {secret, tree, *_git_output(outside, "rev-list", "--objects", "--all").split()}:
+        if len(sha) != 40:
+            continue
+        source = outside / ".git" / "objects" / sha[:2] / sha[2:]
+        if not source.exists():
+            continue
+        (objects / sha[:2]).mkdir(exist_ok=True)
+        target = objects / sha[:2] / sha[2:]
+        if not target.exists():
+            _symlink_or_skip(target, source)
+    (git_repository / ".git" / "refs" / "heads" / "evil").write_text(secret + "\n", "utf-8")
+    assert "OTHER_SECRET_COMMIT" in _git_output(git_repository, "log", "-1", "--format=%s", "evil")
+
+    _assert_every_git_tool_refused(tmp_path, git_repository)
+    text = _refusal_text(tmp_path, git_repository)
+    assert "symlinked loose object" in text and "OTHER_SECRET" not in text
+
+
+def test_too_many_loose_objects_asks_for_git_gc(tmp_path: Path, git_repository: Path) -> None:
+    from mcp_toolbox.tools.git.handlers import _MAX_LOOSE_OBJECTS
+
+    objects = git_repository / ".git" / "objects"
+    for index in range(_MAX_LOOSE_OBJECTS + 1):
+        fanout = objects / f"{index % 256:02x}"
+        fanout.mkdir(exist_ok=True)
+        (fanout / f"{index:038x}").write_bytes(b"x")
+
+    assert "git gc" in _refusal_text(tmp_path, git_repository)
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="FIFOs are POSIX-only")
+def test_fifo_in_pack_directory_is_refused_without_hanging(
+    tmp_path: Path, git_repository: Path
+) -> None:
+    import tempfile
+
+    pack = git_repository / ".git" / "objects" / "pack"
+    pack.mkdir(exist_ok=True)
+    os.mkfifo(pack / "pack-trap.pack")
+    before = set(Path(tempfile.gettempdir()).glob("local-mcp-toolbox-git-objects-*"))
+
+    started = time.perf_counter()
+    text = _refusal_text(tmp_path, git_repository)
+    assert time.perf_counter() - started < 5
+    assert "not a regular file" in text
+    after = set(Path(tempfile.gettempdir()).glob("local-mcp-toolbox-git-objects-*"))
+    assert after <= before, "private object view was left behind"

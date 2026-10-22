@@ -439,7 +439,15 @@ _DIRECTORY_FLAGS = (
     | getattr(os, "O_NOFOLLOW", 0)
     | getattr(os, "O_CLOEXEC", 0)
 )
-_FILE_FLAGS = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+# O_NONBLOCK: opening a FIFO planted in objects/pack must not block the server.
+_FILE_FLAGS = (
+    os.O_RDONLY
+    | getattr(os, "O_NOFOLLOW", 0)
+    | getattr(os, "O_CLOEXEC", 0)
+    | getattr(os, "O_NONBLOCK", 0)
+)
+# Above this many loose objects the per-file symlink scan is refused rather than run.
+_MAX_LOOSE_OBJECTS = 50_000
 _HEX = frozenset("0123456789abcdef")
 
 
@@ -484,6 +492,7 @@ def _build_object_view(
 ) -> None:
     (view / "info").mkdir(parents=True)
     (view / "pack").mkdir()
+    loose_count = 0
     git_fd = keep(os.open(git_dir, _DIRECTORY_FLAGS))
     objects_fd = keep(os.open("objects", _DIRECTORY_FLAGS, dir_fd=git_fd))
     for entry in sorted(os.listdir(objects_fd)):
@@ -491,10 +500,30 @@ def _build_object_view(
             pack_fd = keep(os.open("pack", _DIRECTORY_FLAGS, dir_fd=objects_fd))
             for name in sorted(os.listdir(pack_fd)):
                 file_fd = keep(os.open(name, _FILE_FLAGS, dir_fd=pack_fd))
-                if stat.S_ISREG(os.fstat(file_fd).st_mode):
-                    os.symlink(f"/proc/self/fd/{file_fd}", view / "pack" / name)
+                if not stat.S_ISREG(os.fstat(file_fd).st_mode):
+                    raise _git_denial(
+                        "The approved repository's .git/objects/pack contains something that "
+                        "is not a regular file.",
+                        "Remove the non-file entry from .git/objects/pack.",
+                    )
+                os.symlink(f"/proc/self/fd/{file_fd}", view / "pack" / name)
         elif len(entry) == 2 and set(entry) <= _HEX:
             fanout_fd = keep(os.open(entry, _DIRECTORY_FLAGS, dir_fd=objects_fd))
+            with os.scandir(fanout_fd) as loose:
+                for item in loose:
+                    loose_count += 1
+                    if loose_count > _MAX_LOOSE_OBJECTS:
+                        raise _git_denial(
+                            "The approved repository has too many loose objects to inspect "
+                            f"safely (more than {_MAX_LOOSE_OBJECTS}).",
+                            "Run `git gc` in the repository to pack its loose objects.",
+                        )
+                    if item.is_symlink():
+                        raise _git_denial(
+                            "The approved repository's .git/objects contains a symlinked "
+                            "loose object, so Git could read another repository's data.",
+                            "Replace the symlink with the real object file or run `git gc`.",
+                        )
             os.symlink(f"/proc/self/fd/{fanout_fd}", view / entry)
     if stores:
         # Alternate stores inside the repository are opened by their resolved path.
