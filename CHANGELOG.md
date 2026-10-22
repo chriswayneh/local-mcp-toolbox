@@ -32,6 +32,14 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
   redacted. An empty `"password": ""` is left intact instead of swallowing the
   rest of the line, and name-like keys such as `tokenizer` or `private_key_path`
   keep their values.
+- Text after an existing redaction marker on the same line is now redacted
+  (`password=[REDACTED_X] realsecret`), as are values glued to empty quotes
+  (`password=''hunter2`); only an exact `"k": ""` is kept. camelCase keys such
+  as `authToken`, `accessToken`, `refreshToken`, `idToken`, and `myApiKey`,
+  prefixed keys such as `client_credentials` and `user_pass`, and XML elements
+  with attributes or prefixes (`<password type="x">`, `<db_password>`) are
+  redacted. Pathological long lines no longer take seconds to redact (two
+  patterns backtracked quadratically).
 
 ## [1.5.3] - 2026-10-04
 

@@ -26,8 +26,44 @@ class _Rule:
     pattern: re.Pattern[str]
 
 
-# An exact redaction marker followed by a delimiter (or end of value) is already safe.
-_MARKER_AHEAD = r"\[REDACTED_[A-Z_]+\](?=[\s'\",;}\]]|$)"
+# An exact redaction marker is already safe only when nothing but delimiters follows it on
+# the line (``password=[REDACTED_X] realsecret`` still leaks ``realsecret``).
+_MARKER_AHEAD = r"(?:\[REDACTED_[A-Z_]+\]['\"]?[ \t,;}\]]*)+$"
+# After a closing quote, the next non-blank character must end the value (or the line).
+_QUOTE_END = r"(?=[ \t]*(?:[,;}\]):]|$))"
+# A properly quoted marker followed by a structural delimiter, e.g. JSON ``"[REDACTED_X]", ``.
+_QUOTED_MARKER = r"(?P<mq>['\"])\[REDACTED_[A-Z_]+\](?P=mq)" + _QUOTE_END
+
+
+_TRAILING_DELIMITERS = " \t,;}]'\""
+_MARKER_BODY = re.compile(r"\[REDACTED_[A-Z_]+\]")
+
+
+def _trim_trailing_markers(text: str, start: int, end: int) -> int:
+    """Return ``end`` moved left past trailing blanks and already-redacted markers.
+
+    A to-end-of-line value must not swallow a marker an earlier rule left after it, nor the
+    whitespace that separates it from what follows. Runs in linear time on long lines.
+    """
+
+    while end > start and text[end - 1] in " \t":
+        end -= 1
+    probe = end
+    while probe > start:
+        if text[probe - 1] == "]":
+            opening = text.rfind("[REDACTED_", start, probe)
+            if opening >= start and _MARKER_BODY.fullmatch(text, opening, probe):
+                # Drop the marker and anything blank before it; keep scanning left.
+                end = probe = opening
+                while end > start and text[end - 1] in " \t":
+                    end -= 1
+                probe = end
+                continue
+        if text[probe - 1] in _TRAILING_DELIMITERS:
+            probe -= 1
+            continue
+        break
+    return end
 
 
 def _keyed_rules(category: str, key: str) -> tuple[_Rule, _Rule]:
@@ -38,30 +74,34 @@ def _keyed_rules(category: str, key: str) -> tuple[_Rule, _Rule]:
     value with spaces or punctuation cannot leak its tail.
     """
 
-    prefix = rf"(?im){key}['\"]?[ \t]*[:=][ \t]*"
+    prefix = rf"(?im){key}['\"]?[ \t]*(?:(?P<colon>:)|=)[ \t]*"
     quoted = _Rule(
         category,
         re.compile(
             # Only `key: "value"` (JSON, YAML, dict reprs). With `key=` an opening quote
             # proves nothing about where the value ends, so the unquoted rule takes the line.
             rf"(?im){key}['\"]?[ \t]*:[ \t]*" + r"(?P<quote>['\"])"
-            r"(?!\[REDACTED_[A-Z_]+\](?P=quote))"
+            r"(?!\[REDACTED_[A-Z_]+\](?P=quote)" + _QUOTE_END + r")"
             r"(?P<secret>(?:\\[^\r\n]|(?P=quote)(?P=quote)|(?!(?P=quote))[^\\\r\n])+)"
             # The closing quote must end the value; otherwise the unquoted rule takes the line.
-            r"(?P=quote)(?=[\s,;}\]):]|$)"
+            r"(?P=quote)" + _QUOTE_END
         ),
     )
     unquoted = _Rule(
         category,
         re.compile(
             prefix
-            # An empty quoted value (``""``) holds nothing to leak; keep its quotes and the line.
-            + r"(?!\"\"|'')"
+            # An empty quoted JSON/YAML value (``"k": ""``) holds nothing to leak; keep its
+            # quotes and the line. After ``=`` the quotes may be the secret itself.
+            + r"(?(colon)(?!(?:\"\"|'')"
+            + _QUOTE_END
+            + r"))"
             + r"(?!['\"]?"
             + _MARKER_AHEAD
-            + r")(?P<secret>\S(?:(?!"
-            + _MARKER_AHEAD
-            + r")[^\r\n])*)"
+            + r"|"
+            + _QUOTED_MARKER
+            # Greedy to end of line (linear); trailing markers are trimmed in ``redact``.
+            + r")(?P<secret>\S[^\r\n]*)"
         ),
     )
     return quoted, unquoted
@@ -95,7 +135,7 @@ class Redactor:
         _Rule(
             "CONNECTION_PASSWORD",
             re.compile(
-                r"(?i)[a-z][a-z0-9+.-]*://[^\s:/@]+:(?P<secret>[^\r\n]{1,256}?)@"
+                r"(?i)(?<![a-z0-9+.-])[a-z][a-z0-9+.-]*://[^\s:/@]+:(?P<secret>[^\r\n]{1,256}?)@"
                 r"(?=[a-z0-9.-]+(?::\d+)?(?:[/?#]|$))"
             ),
         ),
@@ -106,15 +146,19 @@ class Redactor:
                 r"['\"]?(?P<secret>[^\s;'\"]{8,})"
             ),
         ),
-        *_keyed_rules("SECRET_ASSIGNMENT", r"(?<![a-z0-9_.-])[a-z0-9_.-]*secret[a-z0-9_.-]*"),
+        *_keyed_rules("SECRET_ASSIGNMENT", r"(?<![a-z0-9_.-])(?=[a-z0-9_.-]*?secret)[a-z0-9_.-]++"),
         *_keyed_rules("PRIVATE_KEY_ASSIGNMENT", r"(?<![a-z0-9_.-])private[-_]?key(?![a-z0-9_.-])"),
-        *_keyed_rules("CREDENTIAL_ASSIGNMENT", r"(?<![a-z0-9_.-])credentials?(?![a-z0-9_.-])"),
-        *_keyed_rules("PASSWORD", r"(?<![a-z0-9_.-])pass(?![a-z0-9_.-])"),
+        *_keyed_rules(
+            "CREDENTIAL_ASSIGNMENT",
+            r"(?<![a-z0-9_.-])(?:[a-z0-9_.-]*[-_.])?credentials?(?![a-z0-9_.-])",
+        ),
+        *_keyed_rules("PASSWORD", r"(?<![a-z0-9_.-])(?:[a-z0-9_.-]*[-_.])?pass(?![a-z0-9_.-])"),
         _Rule(
             "XML_SECRET",
             re.compile(
-                r"(?i)<(?P<tag>password|passwd|pwd|pass|secret|token|api[-_]?key|private[-_]?key"
-                r"|credentials?)>(?!\[REDACTED_[A-Z_]+\]</)(?P<secret>[^<]+)</(?P=tag)>"
+                r"(?i)<(?P<tag>(?:[a-z0-9_.-]*[-_.:])?(?:password|passwd|pwd|pass|secret|token"
+                r"|api[-_]?key|private[-_]?key|credentials?)|[a-z0-9_.-]*(?:password|secret))"
+                r"(?:\s[^<>]*)?>(?!\[REDACTED_[A-Z_]+\]</)(?P<secret>[^<]+)</(?P=tag)>"
             ),
         ),
         _Rule(
@@ -123,7 +167,13 @@ class Redactor:
         ),
         *_keyed_rules(
             "API_KEY",
-            r"(?<![a-z0-9])(?:[a-z0-9_.-]*[-_.])?(?:api[-_]?key|token)(?![a-z0-9_.-])",
+            r"(?<![a-z0-9_.-])(?:[a-z0-9_.-]*[-_.])?(?:api[-_]?key|token)(?![a-z0-9_.-])",
+        ),
+        # camelCase keys such as authToken, accessToken, refreshToken, idToken, myApiKey.
+        *_keyed_rules(
+            "API_KEY",
+            r"(?-i:(?<![A-Za-z0-9_.-])(?=[A-Za-z0-9_.-]*?[a-z0-9](?:Token|ApiKey)s?"
+            r"(?![A-Za-z0-9_.-]))[A-Za-z0-9_.-]++)",
         ),
         _Rule(
             "AUTHORIZATION_HEADER",
@@ -179,8 +229,9 @@ class Redactor:
                 offset = match.start()
                 whole = match.group(0)
                 # Keep whitespace that separates a to-end-of-line value from what follows.
-                while end > start and whole[end - 1 - offset] in " \t":
-                    end -= 1
+                end = _trim_trailing_markers(whole, start - offset, end - offset) + offset
+                if end == start:
+                    return whole
                 fingerprints.append(self.fingerprint(whole[start - offset : end - offset]))
                 count += 1
                 return (

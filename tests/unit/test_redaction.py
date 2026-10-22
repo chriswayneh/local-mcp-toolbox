@@ -29,7 +29,7 @@ def test_redacts_common_secret_formats_without_retaining_values() -> None:
     github_token = "ghp_123456789012345678901234567890"
     aws_key = "AKIA1234567890ABCDEF"
     private_key = "-----BEGIN PRIVATE KEY-----\npretend-key\n-----END PRIVATE KEY-----"
-    text = f"token={github_token} aws={aws_key} password=demo-pass {private_key}"
+    text = f"token={github_token}\naws={aws_key}\npassword=demo-pass\n{private_key}"
 
     result = Redactor().redact(text)
 
