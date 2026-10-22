@@ -19,6 +19,13 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
   ones containing spaces, commas, braces, or escaped quotes no longer leak in
   part or in full. Unquoted `password=...` values keep their full previous
   coverage, and a value an earlier rule already replaced is not counted twice.
+- Keyed secrets (`password`/`pwd`, `*secret*`, `*token`, `*api_key`) have no
+  minimum length any more, so 1-3 character values are redacted. Unquoted
+  values are redacted to the end of the line (or up to an existing redaction
+  marker), so values with spaces or punctuation cannot leak their tail; quoted
+  values honor YAML's doubled-quote escape. Only an exact marker followed by a
+  delimiter is skipped; `[REDACTED_X]realsecret` is redacted. URL passwords
+  containing a space are redacted too.
 
 ## [1.5.3] - 2026-10-04
 

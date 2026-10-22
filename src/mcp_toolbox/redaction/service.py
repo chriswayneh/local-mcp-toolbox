@@ -26,6 +26,40 @@ class _Rule:
     pattern: re.Pattern[str]
 
 
+# An exact redaction marker followed by a delimiter (or end of value) is already safe.
+_MARKER_AHEAD = r"\[REDACTED_[A-Z_]+\](?=[\s'\",;}\]]|$)"
+
+
+def _keyed_rules(category: str, key: str) -> tuple[_Rule, _Rule]:
+    """Rules for ``key = value`` style secrets: no length floor, since the key names a secret.
+
+    The quoted form takes everything up to the matching unescaped quote (backslash escapes and
+    YAML's doubled-quote escape included). The unquoted form takes the rest of the line, so a
+    value with spaces or punctuation cannot leak its tail.
+    """
+
+    prefix = rf"(?im){key}['\"]?[ \t]*[:=][ \t]*"
+    quoted = _Rule(
+        category,
+        re.compile(
+            prefix + r"(?P<quote>['\"])"
+            r"(?!\[REDACTED_[A-Z_]+\](?P=quote))"
+            r"(?P<secret>(?:\\[^\r\n]|(?P=quote)(?P=quote)|(?!(?P=quote))[^\\\r\n])+)"
+            r"(?P=quote)(?!(?P=quote))"
+        ),
+    )
+    unquoted = _Rule(
+        category,
+        re.compile(
+            prefix
+            + r"(?!['\"]?"
+            + _MARKER_AHEAD
+            + r")(?P<secret>\S(?:(?!\[REDACTED_[A-Z_]+\])[^\r\n])*)"
+        ),
+    )
+    return quoted, unquoted
+
+
 class Redactor:
     """Redact common secret formats before tool responses or audit writes."""
 
@@ -50,28 +84,11 @@ class Redactor:
             "BEARER_TOKEN",
             re.compile(r"(?i)Bearer\s+(?P<secret>[A-Za-z0-9._~+/=-]{12,})"),
         ),
-        # Quoted values (JSON, YAML, Python reprs): take the whole string up to the
-        # matching unescaped quote, whatever its length or punctuation.
-        _Rule(
-            "PASSWORD",
-            re.compile(
-                r"(?i)(?:password|passwd|pwd)['\"]?\s*[:=]\s*(?P<quote>['\"])"
-                r"(?P<secret>(?!\[REDACTED_[A-Z_]+\](?P=quote))"
-                r"(?:\\[^\r\n]|(?!(?P=quote))[^\\\r\n])+)(?P=quote)"
-            ),
-        ),
-        # Unquoted assignments such as password=... keep their original coverage.
-        _Rule(
-            "PASSWORD",
-            re.compile(
-                r"(?i)(?:password|passwd|pwd)['\"]?\s*[:=]\s*['\"]?"
-                r"(?P<secret>(?!\[REDACTED_)[^\s'\";]{4,})"
-            ),
-        ),
+        *_keyed_rules("PASSWORD", r"(?:password|passwd|pwd)"),
         _Rule(
             "CONNECTION_PASSWORD",
             re.compile(
-                r"(?i)[a-z][a-z0-9+.-]*://[^\s:/@]+:(?P<secret>[^\s]+)@"
+                r"(?i)[a-z][a-z0-9+.-]*://[^\s:/@]+:(?P<secret>[^\r\n]{1,256}?)@"
                 r"(?=[a-z0-9.-]+(?::\d+)?(?:[/?#]|$))"
             ),
         ),
@@ -82,23 +99,14 @@ class Redactor:
                 r"['\"]?(?P<secret>[^\s;'\"]{8,})"
             ),
         ),
-        _Rule(
-            "SECRET_ASSIGNMENT",
-            re.compile(
-                r"(?i)(?<![a-z0-9_.-])[a-z0-9_.-]*secret[a-z0-9_.-]*\s*[:=]\s*['\"]?"
-                r"(?P<secret>(?!\[REDACTED_)[^\s'\";\[]{8,})"
-            ),
-        ),
+        *_keyed_rules("SECRET_ASSIGNMENT", r"(?<![a-z0-9_.-])[a-z0-9_.-]*secret[a-z0-9_.-]*"),
         _Rule(
             "COOKIE",
             re.compile(r"(?im)^(?:set-)?cookie\s*:\s*(?P<secret>[^\r\n]{1,2048})"),
         ),
-        _Rule(
+        *_keyed_rules(
             "API_KEY",
-            re.compile(
-                r"(?i)(?:api[-_]?key|service[-_]?token|access[-_]?token|token)\s*[:=]\s*"
-                r"['\"]?(?P<secret>[A-Za-z0-9._~+/=-]{12,})"
-            ),
+            r"(?<![a-z0-9])(?:[a-z0-9_.-]*[-_.])?(?:api[-_]?key|token)(?![a-z0-9_.-])",
         ),
         _Rule(
             "AUTHORIZATION_HEADER",
@@ -145,14 +153,16 @@ class Redactor:
 
             def replace(match: re.Match[str], current_rule: _Rule = rule) -> str:
                 nonlocal count
-                matched_value = match.group("secret")
-                fingerprints.append(self.fingerprint(matched_value))
-                count += 1
                 # Replace only the secret's own span: a short secret such as "a" must
                 # not also rewrite the same letters inside the key name.
                 start, end = match.span("secret")
                 offset = match.start()
                 whole = match.group(0)
+                # Keep whitespace that separates a to-end-of-line value from what follows.
+                while end > start and whole[end - 1 - offset] in " \t":
+                    end -= 1
+                fingerprints.append(self.fingerprint(whole[start - offset : end - offset]))
+                count += 1
                 return (
                     whole[: start - offset]
                     + f"[REDACTED_{current_rule.category}]"
