@@ -177,3 +177,82 @@ def test_dot_git_file_redirecting_to_another_repository_is_refused(tmp_path: Pat
                 assert "unapproved" not in str(result.content)
 
     asyncio.run(scenario())
+
+
+def _outside_repository(tmp_path: Path) -> Path:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    _git(outside, "init", "-b", "master")
+    _git(outside, "config", "user.name", "Outside")
+    _git(outside, "config", "user.email", "outside@example.test")
+    (outside / "outside-only.txt").write_text("outside data\n", encoding="utf-8")
+    _git(outside, "add", ".")
+    _git(outside, "commit", "-m", "outside-only commit subject")
+    return outside
+
+
+def _assert_every_git_tool_refused(tmp_path: Path, repository: Path) -> None:
+    server = _status_server(tmp_path, repository)
+
+    async def scenario() -> None:
+        async with Client(server) as client:
+            for tool in (
+                "git_repository_status",
+                "git_recent_commits",
+                "git_current_branch",
+                "git_diff_summary",
+            ):
+                result = await client.call_tool(tool, {"repository": str(repository)})
+                assert result.is_error is True, tool
+                text = str(result.content) + str(result.structured_content)
+                assert "outside-only" not in text, tool
+                assert "outside data" not in text, tool
+                assert "Outside" not in text, tool
+
+    asyncio.run(scenario())
+
+
+def test_commondir_pointing_outside_is_refused(tmp_path: Path, git_repository: Path) -> None:
+    outside = _outside_repository(tmp_path)
+    git_dir = git_repository / ".git"
+    shutil.rmtree(git_dir / "refs")
+    shutil.rmtree(git_dir / "objects")
+    (git_dir / "commondir").write_text(f"{outside / '.git'}\n", encoding="utf-8")
+    (git_dir / "HEAD").write_text("ref: refs/heads/master\n", encoding="utf-8")
+    # Sanity check: plain Git really follows commondir to the outside repository.
+    log = subprocess.run(
+        ["git", "-C", str(git_repository), "log", "-1", "--format=%s"],
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout
+    assert "outside-only commit subject" in log
+
+    _assert_every_git_tool_refused(tmp_path, git_repository)
+
+
+def test_alternates_pointing_outside_are_refused(tmp_path: Path, git_repository: Path) -> None:
+    outside = _outside_repository(tmp_path)
+    info = git_repository / ".git" / "objects" / "info"
+    info.mkdir(parents=True, exist_ok=True)
+    (info / "alternates").write_text(f"{outside / '.git' / 'objects'}\n", encoding="utf-8")
+
+    _assert_every_git_tool_refused(tmp_path, git_repository)
+
+
+def test_alternates_inside_the_repository_are_allowed(tmp_path: Path, git_repository: Path) -> None:
+    store = git_repository / "local-store"
+    store.mkdir()
+    info = git_repository / ".git" / "objects" / "info"
+    info.mkdir(parents=True, exist_ok=True)
+    (info / "alternates").write_text("../../local-store\n", encoding="utf-8")
+    server = _status_server(tmp_path, git_repository)
+
+    async def scenario() -> None:
+        async with Client(server) as client:
+            result = await client.call_tool(
+                "git_recent_commits", {"repository": str(git_repository)}
+            )
+            assert result.is_error is False
+
+    asyncio.run(scenario())

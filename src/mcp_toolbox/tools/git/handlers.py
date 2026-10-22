@@ -59,6 +59,7 @@ class GitRunner:
                 "The approved repository must contain its own .git directory.",
                 remediation="Approve the main working tree of a regular, non-linked repository.",
             )
+        _require_self_contained_git_dir(repository, git_dir)
         # Explicit --git-dir/--work-tree win over repo-local core.worktree, so Git can only
         # read the approved working tree.
         command = [
@@ -225,6 +226,49 @@ def register_git_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[str, 
 
 def _require_repository(runtime: ServerRuntime, requested_path: str) -> Path:
     return runtime.permissions.require_git_repository(Path(requested_path))
+
+
+def _require_self_contained_git_dir(repository: Path, git_dir: Path) -> None:
+    """Refuse a `.git` directory that borrows refs, objects, or config from elsewhere.
+
+    A `commondir` file makes Git read refs, objects, and config from another directory, and
+    `objects/info/alternates` adds object stores; either could expose an unapproved repository.
+    """
+
+    denied = ToolboxError(
+        ErrorCategory.PERMISSION_DENIED,
+        "The approved repository's .git directory refers to storage outside the repository.",
+        remediation="Approve a self-contained repository without commondir or outside alternates.",
+    )
+    if (git_dir / "commondir").exists() or (git_dir / "commondir").is_symlink():
+        raise denied
+    alternates = git_dir / "objects" / "info" / "alternates"
+    if alternates.is_symlink():
+        raise denied
+    if not alternates.exists():
+        return
+    try:
+        lines = alternates.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError as error:
+        raise denied from error
+    root = repository.resolve()
+    objects = git_dir / "objects"
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        # Git allows C-style quoted paths here; anything quoted is refused rather than parsed.
+        if line.startswith('"'):
+            raise denied
+        target = Path(line)
+        if not target.is_absolute():
+            target = objects / target
+        try:
+            resolved = target.resolve(strict=False)
+        except OSError as error:
+            raise denied from error
+        if not resolved.is_relative_to(root):
+            raise denied
 
 
 def _safe_git_environment(repository: Path | None = None) -> dict[str, str]:

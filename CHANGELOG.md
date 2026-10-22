@@ -12,6 +12,9 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
   `.git` file could point Git at a directory or repository outside the
   allowlist. Linked worktrees and submodule checkouts can no longer be approved
   directly; approve the main working tree instead.
+- Git tools also refuse a `.git` directory that contains a `commondir` file, or
+  whose `objects/info/alternates` points outside the approved repository, since
+  either makes Git read refs, objects, or config from somewhere else.
 
 ## [1.5.3] - 2026-10-04
 
