@@ -50,7 +50,25 @@ class GitRunner:
                 remediation="Install Git or disable the Git integration.",
             )
 
-        command = [executable, "-C", str(repository), *arguments]
+        git_dir = repository / ".git"
+        # A `.git` file (gitdir: ...) or a symlink can redirect Git to a repository that was
+        # never approved, so only a real `.git` directory inside the approved path is used.
+        if git_dir.is_symlink() or not git_dir.is_dir():
+            raise ToolboxError(
+                ErrorCategory.PERMISSION_DENIED,
+                "The approved repository must contain its own .git directory.",
+                remediation="Approve the main working tree of a regular, non-linked repository.",
+            )
+        # Explicit --git-dir/--work-tree win over repo-local core.worktree, so Git can only
+        # read the approved working tree.
+        command = [
+            executable,
+            "-C",
+            str(repository),
+            f"--git-dir={git_dir}",
+            f"--work-tree={repository}",
+            *arguments,
+        ]
         try:
             # The command is assembled only from the resolved Git executable, approved repository,
             # and fixed read-only templates declared by this module.
@@ -63,7 +81,7 @@ class GitRunner:
                 encoding="utf-8",
                 errors="replace",
                 timeout=self._runtime.settings.limits.timeout_seconds,
-                env=_safe_git_environment(),
+                env=_safe_git_environment(repository),
             )
         except subprocess.TimeoutExpired as error:
             raise ToolboxError(
@@ -209,7 +227,7 @@ def _require_repository(runtime: ServerRuntime, requested_path: str) -> Path:
     return runtime.permissions.require_git_repository(Path(requested_path))
 
 
-def _safe_git_environment() -> dict[str, str]:
+def _safe_git_environment(repository: Path | None = None) -> dict[str, str]:
     """Keep Git non-interactive and prevent user/system config from injecting behavior."""
 
     environment = {"PATH": os.environ.get("PATH", ""), "GIT_TERMINAL_PROMPT": "0"}
@@ -218,6 +236,9 @@ def _safe_git_environment() -> dict[str, str]:
             environment[name] = value
     environment["GIT_CONFIG_NOSYSTEM"] = "1"
     environment["GIT_CONFIG_GLOBAL"] = os.devnull
+    if repository is not None:
+        # Never search above the approved repository for a different one.
+        environment["GIT_CEILING_DIRECTORIES"] = str(repository.parent)
     return environment
 
 

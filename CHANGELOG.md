@@ -3,6 +3,16 @@
 All notable changes to Local MCP Toolbox are documented here. The project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+- Git tools now pin Git to the approved repository: they pass explicit
+  `--git-dir=<repo>/.git` and `--work-tree=<repo>`, set
+  `GIT_CEILING_DIRECTORIES`, and refuse a repository whose `.git` is a file
+  (`gitdir: ...`) or a symlink. Before, a repository-local `core.worktree` or a
+  `.git` file could point Git at a directory or repository outside the
+  allowlist. Linked worktrees and submodule checkouts can no longer be approved
+  directly; approve the main working tree instead.
+
 ## [1.5.3] - 2026-10-04
 
 - Reject `profile: advanced` when configuration is loaded. It is not an elevated

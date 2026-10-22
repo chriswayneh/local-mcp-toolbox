@@ -119,3 +119,61 @@ def _git(repository: Path, *arguments: str) -> None:
         capture_output=True,
         text=True,
     )
+
+
+def _status_server(tmp_path: Path, repository: Path):  # type: ignore[no-untyped-def]
+    return create_server(
+        build_runtime(
+            ToolboxSettings(
+                profile=PermissionProfile.STANDARD,
+                filesystem=FilesystemSettings(approved_roots=[tmp_path]),
+                integrations=IntegrationSettings(git=True),
+                git=GitSettings(approved_repositories=[repository]),
+                audit=AuditSettings(path=tmp_path / "audit" / "events.jsonl"),
+            )
+        )
+    )
+
+
+def test_repo_local_core_worktree_cannot_point_git_outside_the_repository(
+    tmp_path: Path, git_repository: Path
+) -> None:
+    outside = tmp_path / "outside-worktree"
+    outside.mkdir()
+    (outside / "outside-only-file.txt").write_text("not approved\n", encoding="utf-8")
+    _git(git_repository, "config", "core.worktree", str(outside))
+    server = _status_server(tmp_path, git_repository)
+
+    async def scenario() -> None:
+        async with Client(server) as client:
+            result = await client.call_tool(
+                "git_repository_status", {"repository": str(git_repository)}
+            )
+            assert result.is_error is False
+            assert "outside-only-file" not in str(result.structured_content)
+            paths = [c["path"] for c in result.structured_content["data"]["changes"]]
+            assert paths == ["README.md"]
+
+    asyncio.run(scenario())
+
+
+def test_dot_git_file_redirecting_to_another_repository_is_refused(tmp_path: Path) -> None:
+    if shutil.which("git") is None:
+        pytest.skip("Git is not installed")
+    other = tmp_path / "unapproved-repository"
+    other.mkdir()
+    _git(other, "init")
+    (other / "unapproved-only.txt").write_text("x\n", encoding="utf-8")
+    approved = tmp_path / "approved-repository"
+    approved.mkdir()
+    (approved / ".git").write_text(f"gitdir: {other / '.git'}\n", encoding="utf-8")
+    server = _status_server(tmp_path, approved)
+
+    async def scenario() -> None:
+        async with Client(server) as client:
+            for tool in ("git_repository_status", "git_recent_commits", "git_current_branch"):
+                result = await client.call_tool(tool, {"repository": str(approved)})
+                assert result.is_error is True
+                assert "unapproved" not in str(result.content)
+
+    asyncio.run(scenario())
