@@ -6,6 +6,7 @@ import asyncio
 import json
 import os
 import sys
+import time
 import types
 from pathlib import Path
 
@@ -50,6 +51,13 @@ def env(tmp_path: Path):
     return runtime, root, other, snapshot
 
 
+@pytest.fixture
+def fallback(monkeypatch):
+    """Exercise the Windows resolve-then-verify path on this platform."""
+
+    monkeypatch.setattr(handlers, "_USE_DIR_FD", False)
+
+
 def _snap(runtime, root: Path, snapshot: Path) -> set[str]:
     return handlers._snapshot_authorized_sources(runtime, root, snapshot)
 
@@ -77,7 +85,7 @@ def test_directory_symlinks_are_not_followed(env) -> None:
     assert _snap(runtime, root, snapshot) == {"real/a.py"}
 
 
-def test_symlink_into_another_approved_root_is_refused(env) -> None:
+def test_symlink_into_another_approved_root_is_refused(env, fallback) -> None:
     runtime, root, other, snapshot = env
     (other / "x.py").write_text("SECRET = 1\n")
     (root / "l.py").symlink_to(other / "x.py")
@@ -91,14 +99,14 @@ def test_blocked_link_name_to_allowed_file_is_refused(env) -> None:
     assert _snap(runtime, root, snapshot) == {"plain.py"}
 
 
-def test_allowed_link_name_to_blocked_file_is_refused(env) -> None:
+def test_allowed_link_name_to_blocked_file_is_refused(env, fallback) -> None:
     runtime, root, _, snapshot = env
     (root / "secret_real.py").write_text("x = 1\n")
     (root / "ok.py").symlink_to(root / "secret_real.py")
     assert _snap(runtime, root, snapshot) == set()
 
 
-def test_dangling_link_is_skipped_and_resolve_is_strict(env, monkeypatch) -> None:
+def test_dangling_link_is_skipped_and_resolve_is_strict(env, fallback, monkeypatch) -> None:
     runtime, root, _, snapshot = env
     (root / "dangle.py").symlink_to(root / "missing.py")
     calls: list[bool] = []
@@ -118,17 +126,17 @@ class _OsProxy(types.SimpleNamespace):
         return getattr(os, name)
 
 
-def test_file_swapped_between_check_and_open_is_refused(env, monkeypatch) -> None:
+def test_file_swapped_between_check_and_open_is_refused(env, fallback, monkeypatch) -> None:
     runtime, root, _, snapshot = env
     (root / "a.py").write_text("x = 1\n")
     real = os.stat(root / "a.py")
-    fake = types.SimpleNamespace(st_dev=real.st_dev, st_ino=real.st_ino + 1)
+    fake = types.SimpleNamespace(st_mode=real.st_mode, st_dev=real.st_dev, st_ino=real.st_ino + 1)
     monkeypatch.setattr(handlers, "os", _OsProxy(stat=lambda path: fake))
     assert handlers._copy_if_authorized(runtime, root, root / "a.py", snapshot) is None
     assert not (snapshot / "a.py").exists()
 
 
-def test_link_retargeted_after_open_is_refused(env, monkeypatch) -> None:
+def test_link_retargeted_after_open_is_refused(env, fallback, monkeypatch) -> None:
     runtime, root, _, snapshot = env
     (root / "a.py").write_text("x = 1\n")
     (root / "b.py").write_text("x = 2\n")
@@ -216,3 +224,157 @@ def test_fake_scanner_sees_only_the_snapshot(tmp_path: Path, monkeypatch) -> Non
     assert [f["file"] for f in data["findings"]] == ["app.py"]
     assert data["total_findings"] == 1
     assert data["withheld_findings"] == 1
+
+
+# --- POSIX descriptor walk (Red Team round 3) ---------------------------------------------
+
+
+def test_posix_walk_is_used_here() -> None:
+    assert handlers._USE_DIR_FD is True
+
+
+def test_symlinked_files_are_never_followed(env) -> None:
+    runtime, root, other, snapshot = env
+    (root / "real.py").write_text("x = 1\n")
+    (root / "inside.py").symlink_to(root / "real.py")
+    (other / "x.py").write_text("SECRET = 1\n")
+    (root / "outside.py").symlink_to(other / "x.py")
+    assert _snap(runtime, root, snapshot) == {"real.py"}
+
+
+def test_parent_directory_swapped_to_symlink_is_refused(env, monkeypatch) -> None:
+    """Red Team PoC: pkg is swapped for a symlink to outside right after the policy check."""
+
+    runtime, root, _, snapshot = env
+    outside = root.parent / "outside"
+    outside.mkdir()
+    (outside / "m.py").write_text("OUTSIDE_SECRET = 'leaked'\n")
+    (root / "pkg").mkdir()
+    (root / "pkg" / "m.py").write_text("x = 1\n")
+    policy = runtime.permissions.security
+    original = type(policy).check_path
+    state = {"swapped": False}
+
+    def check_then_swap(self, requested_path: Path):  # type: ignore[no-untyped-def]
+        decision = original(self, requested_path)
+        if not state["swapped"] and str(requested_path).endswith("pkg/m.py"):
+            state["swapped"] = True
+            os.rename(root / "pkg", root / "pkg.bak")
+            os.symlink(outside, root / "pkg")
+        return decision
+
+    monkeypatch.setattr(type(policy), "check_path", check_then_swap)
+    handlers._copy_if_authorized(runtime, root, root / "pkg" / "m.py", snapshot)
+    assert state["swapped"]
+    copied = snapshot / "pkg" / "m.py"
+    assert not copied.exists() or "OUTSIDE_SECRET" not in copied.read_text()
+
+
+def test_fifo_is_skipped_without_hanging(env) -> None:
+    runtime, root, _, snapshot = env
+    os.mkfifo(root / "evil.py")
+    (root / "ok.py").write_text("x = 1\n")
+    stats = handlers._SnapshotStats()
+    started = time.monotonic()
+    assert handlers._snapshot_authorized_sources(runtime, root, snapshot, stats) == {"ok.py"}
+    assert time.monotonic() - started < 5
+    assert stats.withheld_files == 1
+
+
+def test_fifo_is_skipped_on_fallback_path_too(env, fallback) -> None:
+    runtime, root, _, snapshot = env
+    os.mkfifo(root / "evil.py")
+    assert _snap(runtime, root, snapshot) == set()
+
+
+def test_hard_linked_files_are_withheld(env) -> None:
+    runtime, root, _, snapshot = env
+    outside = root.parent / "outside2"
+    outside.mkdir()
+    (outside / "h.py").write_text("OUTSIDE_HL = 1\n")
+    os.link(outside / "h.py", root / "h.py")
+    assert _snap(runtime, root, snapshot) == set()
+
+
+def test_per_file_cap_withholds_large_files(env, monkeypatch) -> None:
+    runtime, root, _, snapshot = env
+    monkeypatch.setattr(handlers, "_MAX_FILE_BYTES", 10)
+    (root / "big.py").write_text("x = 1234567890\n")
+    (root / "small.py").write_text("x = 1\n")
+    stats = handlers._SnapshotStats()
+    assert handlers._snapshot_authorized_sources(runtime, root, snapshot, stats) == {"small.py"}
+    assert stats.withheld_files == 1
+    assert stats.truncated is False
+
+
+def test_exactly_at_file_cap_is_copied(env, monkeypatch) -> None:
+    runtime, root, _, snapshot = env
+    monkeypatch.setattr(handlers, "_MAX_FILE_BYTES", 6)
+    (root / "a.py").write_text("x = 1\n")
+    assert _snap(runtime, root, snapshot) == {"a.py"}
+
+
+def test_file_growing_past_cap_after_fstat_is_withheld(env, monkeypatch) -> None:
+    runtime, root, _, snapshot = env
+    monkeypatch.setattr(handlers, "_MAX_FILE_BYTES", 6)
+    (root / "a.py").write_text("x = 1\n")
+    real_fstat = os.fstat
+
+    def small_fstat(fd: int):
+        info = real_fstat(fd)
+        (root / "a.py").write_text("x = 1234567\n")
+        return info
+
+    monkeypatch.setattr(handlers, "os", _OsProxy(fstat=small_fstat))
+    assert handlers._copy_if_authorized(runtime, root, root / "a.py", snapshot) is None
+
+
+def test_total_cap_stops_copying_and_is_reported(env, monkeypatch) -> None:
+    runtime, root, _, snapshot = env
+    monkeypatch.setattr(handlers, "_MAX_SNAPSHOT_BYTES", 10)
+    for name in ("a.py", "b.py", "c.py"):
+        (root / name).write_text("x = 1\n")
+    stats = handlers._SnapshotStats()
+    assert handlers._snapshot_authorized_sources(runtime, root, snapshot, stats) == {"a.py"}
+    assert stats.withheld_files == 2
+    assert stats.truncated is True
+    assert stats.copied_bytes == 6
+
+
+def test_odd_names_stay_inside_snapshot(env) -> None:
+    runtime, root, _, snapshot = env
+    for name in ["a\nb.py", "..py", "x\x1b[2J.py", " .py"]:
+        (root / name).write_text("x = 1\n")
+    got = _snap(runtime, root, snapshot)
+    assert len(got) == 4
+    for item in got:
+        assert not item.startswith("/") and ".." not in Path(item).parts
+    for path in snapshot.rglob("*"):
+        assert path.resolve().is_relative_to(snapshot)
+
+
+def test_relative_parts_are_validated(env) -> None:
+    runtime, root, _, snapshot = env
+    assert handlers._copy_if_authorized(runtime, root, root, snapshot) is None
+    (root.parent / "e.py").write_text("x = 1\n")
+    assert handlers._copy_if_authorized(runtime, root, root / ".." / "e.py", snapshot) is None
+
+
+def test_response_reports_withheld_files(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / "approved"
+    root.mkdir()
+    (root / "app.py").write_text("x = 1\n")
+    os.mkfifo(root / "pipe.py")
+    server = create_server(build_runtime(_settings(tmp_path)))
+    monkeypatch.setattr(
+        ScannerRunner, "run_bandit", lambda self, repo: ScannerResult(stdout='{"results": []}')
+    )
+
+    async def scenario() -> dict:
+        async with Client(server) as client:
+            result = await client.call_tool("security_scan_repository", {"repository": str(root)})
+            return result.structured_content["data"]
+
+    data = asyncio.run(scenario())
+    assert data["withheld_files"] == 1
+    assert data["snapshot_truncated"] is False
