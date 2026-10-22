@@ -107,7 +107,7 @@ The design applies zero-trust principles and least privilege: each tool request 
 | Approved roots | Canonical containment blocks arbitrary filesystem access and escape paths. |
 | Read-only surface | No generic shell, mutation, commit, lifecycle, or remote-execution tool is registered. |
 | Fixed subprocesses | External binaries use fixed argument templates, `shell=False`, scrubbed environments, timeouts, and output caps. |
-| Central redaction | PEM blocks, credentials (including JSON `"password": "..."` and values under secret-named keys), cookies, authorization headers, connection strings, and home-directory paths are redacted before output. Email and IP redaction are off unless enabled. |
+| Central redaction | PEM blocks, credentials (including whole quoted JSON `"password": "..."` values and the entire value under any secret-named key), cookies, authorization headers, connection strings, and home-directory paths are redacted before output. Email and IP redaction are off unless enabled. |
 | Output bounds | File reads, collections, subprocess output, and responses are size-limited. |
 | Sanitized audit | Requests record safe metadata, actual outcomes, and redaction counts. Raw secrets and tool output are excluded. |
 | Explicit integrations | GitHub, Git, Docker, logs, scanners, infrastructure, and incident tools must be configured intentionally. |

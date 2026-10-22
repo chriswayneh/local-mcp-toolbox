@@ -30,7 +30,7 @@ def test_audit_log_redacts_summaries_before_writing(tmp_path: Path) -> None:
 
     assert token not in payload
     assert recorded.redaction_count == 1
-    assert stored["input_summary"]["authorization"] == "Bearer [REDACTED_GITHUB_TOKEN]"
+    assert stored["input_summary"]["authorization"] == "[REDACTED_SENSITIVE_FIELD]"
 
 
 def test_audit_event_size_is_bounded(tmp_path: Path) -> None:

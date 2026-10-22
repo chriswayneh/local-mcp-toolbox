@@ -11,6 +11,14 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
   under a secret-named key (`password`, `secret`, `token`, `api_key`, and
   similar) is now replaced with `[REDACTED_SENSITIVE_FIELD]` even when the value
   does not look like a known secret format.
+- That secret-named-key rule now replaces the whole value even when another
+  pattern already redacted part of it (for example a home path followed by the
+  real secret), and only an exact marker such as `[REDACTED_PASSWORD]` counts as
+  already redacted; a value that merely starts with `[REDACTED_` is redacted.
+- Quoted passwords are redacted up to the closing quote, so short passwords and
+  ones containing spaces, commas, braces, or escaped quotes no longer leak in
+  part or in full. Unquoted `password=...` values keep their full previous
+  coverage, and a value an earlier rule already replaced is not counted twice.
 
 ## [1.5.3] - 2026-10-04
 

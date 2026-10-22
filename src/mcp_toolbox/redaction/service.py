@@ -50,11 +50,22 @@ class Redactor:
             "BEARER_TOKEN",
             re.compile(r"(?i)Bearer\s+(?P<secret>[A-Za-z0-9._~+/=-]{12,})"),
         ),
+        # Quoted values (JSON, YAML, Python reprs): take the whole string up to the
+        # matching unescaped quote, whatever its length or punctuation.
+        _Rule(
+            "PASSWORD",
+            re.compile(
+                r"(?i)(?:password|passwd|pwd)['\"]?\s*[:=]\s*(?P<quote>['\"])"
+                r"(?P<secret>(?!\[REDACTED_[A-Z_]+\](?P=quote))"
+                r"(?:\\[^\r\n]|(?!(?P=quote))[^\\\r\n])+)(?P=quote)"
+            ),
+        ),
+        # Unquoted assignments such as password=... keep their original coverage.
         _Rule(
             "PASSWORD",
             re.compile(
                 r"(?i)(?:password|passwd|pwd)['\"]?\s*[:=]\s*['\"]?"
-                r"(?P<secret>[^\s'\";,}]{4,})"
+                r"(?P<secret>(?!\[REDACTED_)[^\s'\";]{4,})"
             ),
         ),
         _Rule(
@@ -101,6 +112,8 @@ class Redactor:
         r"(?i)(?:password|passwd|passphrase|pwd|secret|token|api[-_]?key|private[-_]?key"
         r"|authorization|cookie|credential)"
     )
+    # Only an exact marker counts as already redacted; a marker prefix proves nothing.
+    _REDACTION_MARKER = re.compile(r"\[REDACTED_[A-Z_]+\]")
     _PRIVATE_KEY_BEGIN = re.compile(r"-----BEGIN(?: [A-Z0-9]+)* PRIVATE KEY-----")
     _PRIVATE_KEY_END = re.compile(r"-----END(?: [A-Z0-9]+)* PRIVATE KEY-----")
     _EMAIL_RULE = _Rule(
@@ -135,7 +148,16 @@ class Redactor:
                 matched_value = match.group("secret")
                 fingerprints.append(self.fingerprint(matched_value))
                 count += 1
-                return match.group(0).replace(matched_value, f"[REDACTED_{current_rule.category}]")
+                # Replace only the secret's own span: a short secret such as "a" must
+                # not also rewrite the same letters inside the key name.
+                start, end = match.span("secret")
+                offset = match.start()
+                whole = match.group(0)
+                return (
+                    whole[: start - offset]
+                    + f"[REDACTED_{current_rule.category}]"
+                    + whole[end - offset :]
+                )
 
             redacted = rule.pattern.sub(replace, redacted)
 
@@ -171,9 +193,10 @@ class Redactor:
             count = 0
             for key, item in value.items():
                 safe_item, item_count = self.redact_value(item)
-                if item_count == 0 and self._is_sensitive_string(str(key), item):
-                    # No pattern matched, but the key says the value is a secret.
-                    safe_item, item_count = "[REDACTED_SENSITIVE_FIELD]", 1
+                if self._is_sensitive_string(str(key), item):
+                    # The key says the whole value is a secret, so never keep any part of
+                    # it, even when a pattern already redacted a piece.
+                    safe_item, item_count = "[REDACTED_SENSITIVE_FIELD]", max(item_count, 1)
                 redacted[str(key)] = safe_item
                 count += item_count
             return redacted, count
@@ -194,7 +217,7 @@ class Redactor:
         return (
             isinstance(item, str)
             and bool(item)
-            and not item.startswith("[REDACTED_")
+            and cls._REDACTION_MARKER.fullmatch(item) is None
             and cls._SENSITIVE_KEY.search(key) is not None
         )
 
