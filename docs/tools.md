@@ -153,7 +153,7 @@ Log output is untrusted data and is redacted before it reaches the client or aud
 | Tool | Inputs | Output | Safety controls |
 | --- | --- | --- | --- |
 | `security_scanner_inventory` | None | Availability of a fixed scanner allowlist | Resolves availability only; it does not execute a scanner or disclose executable paths. |
-| `security_scan_repository` | Absolute approved `repository`, optional bounded `limit`, scanner fixed to `bandit` | Normalized Bandit findings without source-code excerpts | Requires explicit opt-in and a separate approved root. Uses only `bandit -q -r <root> -f json` without a shell, timeout/output limits, and central redaction. Findings for files that resolve outside the approved root (for example through a symlink) or match a blocked pattern are dropped and counted in `withheld_findings`. |
+| `security_scan_repository` | Absolute approved `repository`, optional bounded `limit`, scanner fixed to `bandit` | Normalized Bandit findings without source-code excerpts | Requires explicit opt-in and a separate approved root. Copies the approved root's Bandit source files (`.py`/`.pyw`, skipping the directories Bandit skips) into a private temporary snapshot, then runs only `bandit -q -r <snapshot> -f json` there without a shell, with timeout/output limits and central redaction. A file is copied only if it resolves inside the approved root, neither its own name nor its target matches a blocked pattern, and the file opened is the one checked; directory symlinks are not followed. Findings for anything not in the snapshot are dropped and counted in `withheld_findings`. |
 
 Enable the adapter only for the smallest scan root set:
 

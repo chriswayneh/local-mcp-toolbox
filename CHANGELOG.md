@@ -17,6 +17,8 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
   after the scan could slip an outside file's finding through, and a link
   retargeted between checks could make the whole scan return an error. Findings
   are now matched back to the copied files, so neither can happen.
+- The security scan snapshot also refuses a symlink whose own name matches a
+  blocked pattern, even when it points at an allowed file.
 
 ## [1.5.3] - 2026-10-04
 

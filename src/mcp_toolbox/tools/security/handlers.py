@@ -271,7 +271,9 @@ def _copy_if_authorized(
         if not canonical.is_relative_to(root):
             return None
         policy = runtime.permissions.security
-        if not (policy.check_path(entry).allowed and policy.check_path(canonical).allowed):
+        # check_path judges the resolved target; the link's own name is reported in findings,
+        # so it must not match a blocked pattern either.
+        if not policy.check_path(canonical).allowed or policy.matches_blocked_name(relative):
             return None
         expected = os.stat(canonical)
         with canonical.open("rb") as source:
