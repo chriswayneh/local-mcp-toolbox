@@ -4,6 +4,7 @@ import asyncio
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -206,7 +207,10 @@ def _git_server(tmp_path: Path, repository: Path) -> object:
     )
 
 
-@pytest.mark.skipif(shutil.which("sh") is None, reason="POSIX shell required for the probe")
+@pytest.mark.skipif(
+    sys.platform == "win32" or shutil.which("sh") is None,
+    reason="POSIX shell probe; Git for Windows cannot run it as a filter or verifier",
+)
 def test_recent_commits_never_runs_a_repository_signature_verifier(
     tmp_path: Path, git_repository: Path
 ) -> None:
@@ -252,7 +256,10 @@ def test_recent_commits_never_runs_a_repository_signature_verifier(
     assert not marker.exists(), "git_recent_commits ran a repository-chosen signature verifier"
 
 
-@pytest.mark.skipif(shutil.which("sh") is None, reason="POSIX shell required for the probe")
+@pytest.mark.skipif(
+    sys.platform == "win32" or shutil.which("sh") is None,
+    reason="POSIX shell probe; Git for Windows cannot run it as a filter or verifier",
+)
 def test_status_and_diff_never_run_filters_defined_only_in_a_submodule(
     tmp_path: Path, git_repository: Path
 ) -> None:
