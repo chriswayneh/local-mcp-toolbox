@@ -20,6 +20,9 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
   filter driver defined only there, is not covered by the parent overrides. A
   submodule whose checked-out commit moved is still reported; uncommitted edits
   inside a submodule are not.
+- Git status and diff summaries no longer report uncommitted edits inside a
+  submodule's own work tree (`--ignore-submodules=dirty`); docs/tools.md now
+  lists the exact flags and overrides.
 
 ## [1.5.3] - 2026-10-04
 

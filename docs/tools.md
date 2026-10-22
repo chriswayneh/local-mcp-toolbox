@@ -42,12 +42,12 @@ The `restricted` default includes no approved roots, so filesystem requests are 
 
 | Tool | Inputs | Output | Safety controls |
 | --- | --- | --- | --- |
-| `git_repository_status` | Absolute approved `repository` path | Current branch tracking metadata and bounded changed-file status | Requires Git integration, filesystem-root containment, and exact repository allowlist match. Uses `git status --porcelain=v1 --branch`. |
+| `git_repository_status` | Absolute approved `repository` path | Current branch tracking metadata and bounded changed-file status | Requires Git integration, filesystem-root containment, and exact repository allowlist match. Uses `git status --porcelain=v1 --branch --ignore-submodules=dirty`, so uncommitted edits inside a submodule's own work tree are not reported (a submodule pointing at a different commit still is). |
 | `git_current_branch` | Absolute approved `repository` path | Branch name or detached `HEAD` short commit | Uses fixed `git branch --show-current` / `git rev-parse --short HEAD` arguments. |
-| `git_recent_commits` | Absolute approved `repository` path, optional bounded `limit` | Commit hashes, author, ISO timestamp, and subject | Uses a fixed `git log` format. Commit messages and identities are untrusted and redacted. |
-| `git_diff_summary` | Absolute approved `repository` path | Per-file added/deleted-line counts for unstaged tracked changes | Uses `git diff --numstat`; never returns diff content. |
+| `git_recent_commits` | Absolute approved `repository` path, optional bounded `limit` | Commit hashes, author, ISO timestamp, and subject | Uses a fixed `git log --no-show-signature` format, so no signature verifier runs. Commit messages and identities are untrusted and redacted. |
+| `git_diff_summary` | Absolute approved `repository` path | Per-file added/deleted-line counts for unstaged tracked changes | Uses `git diff --numstat --no-ext-diff --no-textconv --ignore-submodules=dirty`; never returns diff content, never runs external diff or textconv programs, and does not report uncommitted edits inside submodules. |
 
-The Git module invokes only fixed, read-only argument templates through `subprocess` with `shell=False`, a scrubbed non-interactive environment, a configured timeout, and a configured output cap. It has no generic command tool.
+The Git module invokes only fixed, read-only argument templates through `subprocess` with `shell=False`, a scrubbed non-interactive environment, a configured timeout, and a configured output cap. Every command also passes `-c` overrides that disable repository-chosen programs (`core.fsmonitor`, `core.hooksPath`, `diff.external`, every configured `filter.<driver>` clean/smudge/process command) and sets `GIT_OPTIONAL_LOCKS=0`. It has no generic command tool.
 
 Enable Git only with an exact repository allowlist in addition to the filesystem root:
 
