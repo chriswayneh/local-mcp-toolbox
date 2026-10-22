@@ -278,7 +278,9 @@ def _snapshot_authorized_sources(
             if name not in _BANDIT_SKIPPED_DIRECTORIES and not name.endswith(".egg")
         )
         for name in sorted(filenames):
-            if Path(name).suffix.lower() not in _BANDIT_SUFFIXES:
+            # Bandit includes files by the glob "*.py"; match that literally. Path.suffix changed
+            # in Python 3.14 for names like "..py" (now no suffix), so it is not used here.
+            if not name.lower().endswith(tuple(_BANDIT_SUFFIXES)):
                 continue
             entry = Path(directory) / name
             relative = _copy_if_authorized(runtime, root, entry, snapshot, stats)

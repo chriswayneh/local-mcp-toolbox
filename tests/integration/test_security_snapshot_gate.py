@@ -92,7 +92,7 @@ def test_symlink_into_another_approved_root_is_refused(env, fallback) -> None:
     assert _snap(runtime, root, snapshot) == set()
 
 
-def test_blocked_link_name_to_allowed_file_is_refused(env) -> None:
+def test_blocked_link_name_to_allowed_file_is_refused(env, fallback) -> None:
     runtime, root, _, snapshot = env
     (root / "plain.py").write_text("x = 1\n")
     (root / "secret_link.py").symlink_to(root / "plain.py")
@@ -346,7 +346,8 @@ def test_odd_names_stay_inside_snapshot(env) -> None:
     for name in ["a\nb.py", "..py", "x\x1b[2J.py", " .py"]:
         (root / name).write_text("x = 1\n")
     got = _snap(runtime, root, snapshot)
-    assert len(got) == 4
+    # "..py" has no Path.suffix on Python 3.14+, but Bandit's "*.py" glob still matches it.
+    assert got == {"a\nb.py", "..py", "x\x1b[2J.py", " .py"}
     for item in got:
         assert not item.startswith("/") and ".." not in Path(item).parts
     for path in snapshot.rglob("*"):
@@ -378,3 +379,18 @@ def test_response_reports_withheld_files(tmp_path: Path, monkeypatch) -> None:
     data = asyncio.run(scenario())
     assert data["withheld_files"] == 1
     assert data["snapshot_truncated"] is False
+
+
+def test_directory_symlinks_are_not_followed_on_fallback_path(env, fallback) -> None:
+    runtime, root, _, snapshot = env
+    (root / "real").mkdir()
+    (root / "real" / "a.py").write_text("x = 1\n")
+    (root / "dirlink").symlink_to(root / "real", target_is_directory=True)
+    assert _snap(runtime, root, snapshot) == {"real/a.py"}
+
+
+def test_descriptor_walk_requires_root_to_be_a_directory(tmp_path: Path) -> None:
+    not_a_directory = tmp_path / "file"
+    not_a_directory.write_text("x\n")
+    with pytest.raises(NotADirectoryError):
+        handlers._read_without_following(not_a_directory, ("a.py",), 100, handlers._SnapshotStats())
