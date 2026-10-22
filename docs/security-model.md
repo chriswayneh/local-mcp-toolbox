@@ -84,6 +84,12 @@ There is no `exec`, `shell`, `terminal`, or `run_command` MCP tool. The shipped 
 
 Docker socket access is equivalent to high host privilege in many deployments. Containerized Docker inspection is opt-in; the shipped socket-proxy profile is recommended, while direct socket mounting is documented only as an advanced, high-risk configuration.
 
+Git inspection is pinned to the approved repository's own `.git` directory: explicit `--git-dir`/`--work-tree`, `GIT_CEILING_DIRECTORIES`, `GIT_COMMON_DIR`, and `GIT_OBJECT_DIRECTORY`, with `commondir`, outside alternates, `http-alternates`, gitdir files, and symlinks in `.git` metadata, refs, `objects/info`, `objects/pack`, or at any `objects/<entry>` refused. On Linux, Git reads objects through a private view bound to descriptors opened without following links, so swapping a directory for a symlink while Git runs cannot redirect it. Accepted residual risks:
+
+- **Hardlinked packs or loose objects.** A hard link is indistinguishable from the original file, so an attacker who can hardlink another repository's pack or object into the approved one can expose it. Hard links cannot cross filesystems and need write access to the target directory.
+- **Loose-object files.** To keep the check independent of repository size, files inside `objects/xx` are not walked; a symlink there whose name matches a reachable object hash can be read.
+- **Swap races outside Linux.** On macOS and Windows the guard is a fingerprint (identity and mtime of every object and ref directory) taken before exec and compared after Git exits. A swap that is reverted within the filesystem's timestamp granularity while Git runs can go unnoticed. Alternate stores inside the repository are opened by resolved path and share this race on every platform.
+
 GitHub inspection requires the GitHub integration, external-network access, and an exact case-insensitive `owner/repository` allowlist. Requests use `GET` only against the fixed `https://api.github.com` origin. Tokens are read from `GITHUB_TOKEN`, used only as an authorization header, and excluded from responses and audit records.
 
 Version 1.5 removed Kubernetes inspection after review showed that ambient kubeconfig credential providers can execute commands and persist refreshed credentials. It also removed generation capabilities because they do not meet a strict inspection-only definition. Neither surface is registered or configurable.

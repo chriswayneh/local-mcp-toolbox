@@ -30,6 +30,15 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
   object fan-out directory or `objects/pack`) is refused. `http-alternates` and a
   `GIT_ALTERNATE_OBJECT_DIRECTORIES` setting in the server environment each get
   their own refusal reason.
+- Git runs with `GIT_COMMON_DIR` and `GIT_OBJECT_DIRECTORY` pinned. On Linux it
+  reads objects through a private view of descriptors opened without following
+  links, closing the race where `objects/pack` was swapped for a symlink while
+  Git ran. The full containment check now runs once per call; before and after
+  exec a cheap fingerprint of object and ref directories must still match, and
+  loose-object files are no longer walked, so the cost does not grow with the
+  number of loose objects. Accepted risks (hardlinked packs or objects, symlinked
+  loose-object files, and timestamp-granularity races on macOS and Windows) are
+  documented in the security model.
 
 ## [1.5.3] - 2026-10-04
 

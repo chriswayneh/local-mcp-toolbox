@@ -5,6 +5,8 @@ import os
 import shutil
 import stat
 import subprocess
+import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -600,3 +602,183 @@ def test_git_is_pinned_with_git_dir_work_tree_and_ceiling(
         assert f"--git-dir={repository / '.git'}" in command
         assert f"--work-tree={repository}" in command
         assert env["GIT_CEILING_DIRECTORIES"] == str(repository.parent)
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="Descriptor-pinned object view is Linux-only; elsewhere the race is documented",
+)
+def test_pack_directory_flip_race_never_leaks_outside_commits(
+    tmp_path: Path, git_repository: Path
+) -> None:
+    import threading
+
+    outside = _outside_repository(tmp_path)
+    _git(outside, "commit", "--allow-empty", "-q", "-m", "OTHER_SECRET_COMMIT")
+    _git(outside, "gc", "-q")
+    objects = git_repository / ".git" / "objects"
+    pack = objects / "pack"
+    parked = objects / "pack_parked"
+    evil = outside / ".git" / "objects" / "pack"
+    probe = tmp_path / "probe-link"
+    _symlink_or_skip(probe, evil)
+    probe.unlink()
+    branch = _git_output(git_repository, "symbolic-ref", "--short", "HEAD")
+    (git_repository / ".git" / "refs" / "heads" / branch).write_text(
+        _git_output(outside, "rev-parse", "HEAD") + "\n", encoding="utf-8"
+    )
+    stop = threading.Event()
+
+    def flip() -> None:
+        while not stop.is_set():
+            try:
+                os.rename(pack, parked)
+                os.symlink(evil, pack)
+                time.sleep(0.0005)
+                os.unlink(pack)
+                os.rename(parked, pack)
+                time.sleep(0.0005)
+            except OSError:
+                pass
+
+    server = _status_server(tmp_path, git_repository)
+    leaks: list[str] = []
+
+    async def scenario() -> None:
+        async with Client(server) as client:
+            for _ in range(200):
+                result = await client.call_tool(
+                    "git_recent_commits", {"repository": str(git_repository)}
+                )
+                if not result.is_error and "OTHER_SECRET" in str(result.structured_content):
+                    leaks.append("leak")
+
+    flipper = threading.Thread(target=flip)
+    flipper.start()
+    try:
+        asyncio.run(scenario())
+    finally:
+        stop.set()
+        flipper.join()
+    assert not leaks, f"{len(leaks)} of 200 calls leaked an outside commit"
+
+
+def test_check_cost_does_not_grow_with_loose_objects(tmp_path: Path, git_repository: Path) -> None:
+    objects = git_repository / ".git" / "objects"
+    for index in range(60_000):
+        fanout = objects / f"{index % 256:02x}"
+        fanout.mkdir(exist_ok=True)
+        (fanout / f"{index:038x}").write_bytes(b"x")
+    server = _status_server(tmp_path, git_repository)
+
+    async def scenario() -> float:
+        async with Client(server) as client:
+            started = time.perf_counter()
+            result = await client.call_tool(
+                "git_current_branch", {"repository": str(git_repository)}
+            )
+            assert result.is_error is False
+            return time.perf_counter() - started
+
+    assert asyncio.run(scenario()) < 2.0
+
+
+def test_alternates_cap_is_sixty_four_stores() -> None:
+    from mcp_toolbox.tools.git.handlers import _MAX_ALTERNATE_STORES
+
+    assert _MAX_ALTERNATE_STORES == 64
+
+
+def test_alternates_chain_one_over_the_cap_is_refused(tmp_path: Path, git_repository: Path) -> None:
+    # The repository's own store plus 64 chained stores is 65, one over the cap.
+    stores = [git_repository / f"store-{index}" for index in range(64)]
+    for store in stores:
+        store.mkdir()
+    _write_alternates(git_repository / ".git" / "objects", f"{stores[0]}\n")
+    for current, following in zip(stores, stores[1:], strict=False):
+        _write_alternates(current, f"{following}\n")
+
+    assert "alternates" in _refusal_text(tmp_path, git_repository)
+
+
+def test_alternates_file_with_hundreds_of_duplicate_entries_is_refused(
+    tmp_path: Path, git_repository: Path
+) -> None:
+    # Few distinct stores, but the walk would visit far more than the cap allows.
+    store = git_repository / "store"
+    store.mkdir()
+    _write_alternates(git_repository / ".git" / "objects", "../../store\n" * 300)
+
+    assert "alternates" in _refusal_text(tmp_path, git_repository)
+
+
+def test_dangling_http_alternates_symlink_is_refused(tmp_path: Path, git_repository: Path) -> None:
+    store = git_repository / "store"
+    (store / "info").mkdir(parents=True)
+    _write_alternates(git_repository / ".git" / "objects", "../../store\n")
+    _symlink_or_skip(store / "info" / "http-alternates", tmp_path / "missing")
+    assert not (store / "info" / "http-alternates").exists()
+
+    assert "http-alternates" in _refusal_text(tmp_path, git_repository)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32" or (hasattr(os, "geteuid") and os.geteuid() == 0),
+    reason="Needs POSIX permissions and a non-root user",
+)
+def test_unreadable_refs_directory_is_refused(tmp_path: Path, git_repository: Path) -> None:
+    locked = git_repository / ".git" / "refs" / "locked"
+    locked.mkdir()
+    locked.chmod(0)
+    try:
+        assert "could not be inspected" in _refusal_text(tmp_path, git_repository)
+    finally:
+        locked.chmod(0o755)
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="Descriptor-pinned object view is Linux-only; elsewhere the race is documented",
+)
+def test_pack_swapped_after_checks_is_not_read(
+    tmp_path: Path, git_repository: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mcp_toolbox.tools.git import handlers
+
+    outside = _outside_repository(tmp_path)
+    _git(outside, "commit", "--allow-empty", "-q", "-m", "OTHER_SECRET_COMMIT")
+    _git(outside, "gc", "-q")
+    branch = _git_output(git_repository, "symbolic-ref", "--short", "HEAD")
+    (git_repository / ".git" / "refs" / "heads" / branch).write_text(
+        _git_output(outside, "rev-parse", "HEAD") + "\n", encoding="utf-8"
+    )
+    pack = git_repository / ".git" / "objects" / "pack"
+    real_run = handlers.subprocess.run
+
+    objects = pack.parent
+
+    def swap_then_run(*args, **kwargs):  # type: ignore[no-untyped-def]
+        # Deterministically lose the race: every check has passed, pack is swapped for a link
+        # while Git runs, then swapped back and the directory times restored so the checks
+        # after exec cannot see it happened.
+        times = os.stat(objects)
+        pack.rename(tmp_path / "parked-pack")
+        pack.symlink_to(outside / ".git" / "objects" / "pack", target_is_directory=True)
+        try:
+            return real_run(*args, **kwargs)
+        finally:
+            pack.unlink()
+            (tmp_path / "parked-pack").rename(pack)
+            os.utime(objects, ns=(times.st_atime_ns, times.st_mtime_ns))
+
+    monkeypatch.setattr(handlers.subprocess, "run", swap_then_run)
+    server = _status_server(tmp_path, git_repository)
+
+    async def scenario() -> None:
+        async with Client(server) as client:
+            result = await client.call_tool(
+                "git_recent_commits", {"repository": str(git_repository)}
+            )
+            assert "OTHER_SECRET" not in str(result.content) + str(result.structured_content)
+
+    asyncio.run(scenario())

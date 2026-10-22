@@ -4,9 +4,14 @@ from __future__ import annotations
 
 import os
 import shutil
+import stat
 import subprocess  # nosec B404
+import sys
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
 from mcp.server import MCPServer
@@ -64,7 +69,7 @@ class GitRunner:
             )
 
         git_dir = repository / ".git"
-        _require_self_contained_git_dir(repository, git_dir)
+        stores = _require_self_contained_git_dir(repository, git_dir)
         before = _git_dir_fingerprint(git_dir)
         # Explicit --git-dir/--work-tree win over repo-local core.worktree, so Git can only
         # read the approved working tree.
@@ -76,25 +81,31 @@ class GitRunner:
             f"--work-tree={repository}",
             *arguments,
         ]
-        # Re-check immediately before exec, then again after Git exits: if anything was planted
-        # or swapped while Git ran, its output is discarded instead of returned.
-        _require_self_contained_git_dir(repository, git_dir)
+        # The full check above runs once. Immediately before exec and again after Git exits, a
+        # cheap fingerprint (identity and mtime of every object and ref directory, plus the
+        # redirect files) must still match: any rename, swap, or plant in between changes a
+        # directory's mtime, so the output is discarded instead of returned.
         if _git_dir_fingerprint(git_dir) != before:
             raise _git_dir_changed()
+        environment = _safe_git_environment(repository)
         try:
-            # The command is assembled only from the resolved Git executable, approved repository,
-            # and fixed read-only templates declared by this module.
-            completed = subprocess.run(  # noqa: S603  # nosec B603
-                command,
-                check=False,
-                shell=False,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=self._runtime.settings.limits.timeout_seconds,
-                env=_safe_git_environment(repository),
-            )
+            with _pinned_object_view(git_dir, stores) as (object_view, pinned_fds):
+                if object_view is not None:
+                    environment["GIT_OBJECT_DIRECTORY"] = object_view
+                # The command is assembled only from the resolved Git executable, approved
+                # repository, and fixed read-only templates declared by this module.
+                completed = subprocess.run(  # noqa: S603  # nosec B603
+                    command,
+                    check=False,
+                    shell=False,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=self._runtime.settings.limits.timeout_seconds,
+                    env=environment,
+                    pass_fds=pinned_fds,
+                )
         except subprocess.TimeoutExpired as error:
             raise ToolboxError(
                 ErrorCategory.TIMEOUT,
@@ -108,7 +119,6 @@ class GitRunner:
                 remediation="Check the local Git installation and server permissions.",
             ) from error
 
-        _require_self_contained_git_dir(repository, git_dir)
         if _git_dir_fingerprint(git_dir) != before:
             raise _git_dir_changed()
         if completed.returncode != 0:
@@ -246,7 +256,7 @@ def _git_denial(reason: str, remediation: str) -> ToolboxError:
     return ToolboxError(ErrorCategory.PERMISSION_DENIED, reason, remediation=remediation)
 
 
-def _require_self_contained_git_dir(repository: Path, git_dir: Path) -> None:
+def _require_self_contained_git_dir(repository: Path, git_dir: Path) -> list[Path]:
     """Refuse any `.git` that lets Git read refs, objects, or config from outside the repository.
 
     Runs before any Git process is started. Each refusal names its specific reason.
@@ -289,8 +299,7 @@ def _require_self_contained_git_dir(repository: Path, git_dir: Path) -> None:
                 f"The approved repository's .git/{name} resolves outside the repository.",
                 "Approve a self-contained repository.",
             )
-    for name in ("objects", "refs"):
-        _refuse_nested_symlinks(git_dir / name, name)
+    _refuse_nested_symlinks(git_dir)
     if os.environ.get("GIT_ALTERNATE_OBJECT_DIRECTORIES"):
         # The Git environment is scrubbed, but refuse loudly rather than rely on that alone.
         raise _git_denial(
@@ -327,7 +336,7 @@ def _require_self_contained_git_dir(repository: Path, git_dir: Path) -> None:
         if len(seen) > _MAX_ALTERNATE_STORES:
             raise _alternates_denial()
         http_alternates = objects / "info" / "http-alternates"
-        if http_alternates.exists() or http_alternates.is_symlink():
+        if http_alternates.exists() or http_alternates.is_symlink():  # dangling links too
             raise _git_denial(
                 "The approved repository lists objects/info/http-alternates, which borrows "
                 "Git objects from another location.",
@@ -361,25 +370,123 @@ def _require_self_contained_git_dir(repository: Path, git_dir: Path) -> None:
                 raise _alternates_denial()
             # Alternates chain: the borrowed store may list alternates of its own.
             pending.append(resolved)
+    return [store for store in seen if store != initial_store]
 
 
-def _refuse_nested_symlinks(top: Path, name: str) -> None:
-    """Refuse a symlink anywhere under .git/objects or .git/refs (e.g. objects/ab or pack)."""
+def _refuse_nested_symlinks(git_dir: Path) -> None:
+    """Refuse a symlink in refs, objects/info, objects/pack, or at any objects/<entry>.
+
+    Loose-object files inside objects/xx are not walked, so a large repository costs about
+    256 lstat calls plus its refs and packs.
+    """
 
     def fail(_error: OSError) -> None:
         raise _git_denial(
-            f"The approved repository's .git/{name} could not be inspected.",
+            "The approved repository's .git could not be inspected.",
             "Check the repository's .git directory permissions.",
         )
 
-    for directory, subdirectories, filenames in os.walk(top, onerror=fail, followlinks=False):
-        for entry in (*subdirectories, *filenames):
-            if (Path(directory) / entry).is_symlink():
-                raise _git_denial(
-                    f"The approved repository's .git/{name} contains a symlink, so Git could "
-                    "read objects or refs from outside the repository.",
-                    "Replace the symlink with the real directory or file.",
-                )
+    def refuse(name: str) -> ToolboxError:
+        return _git_denial(
+            f"The approved repository's .git/{name} contains a symlink, so Git could "
+            "read objects or refs from outside the repository.",
+            "Replace the symlink with the real directory or file.",
+        )
+
+    objects = git_dir / "objects"
+    try:
+        top_entries = list(os.scandir(objects))
+    except FileNotFoundError:
+        top_entries = []
+    except OSError as error:
+        fail(error)
+        top_entries = []
+    for entry in top_entries:
+        if entry.is_symlink():
+            raise refuse("objects")
+    for top, name in (
+        (git_dir / "refs", "refs"),
+        (objects / "info", "objects"),
+        (objects / "pack", "objects"),
+    ):
+        if not top.exists():
+            continue
+        for directory, subdirectories, filenames in os.walk(top, onerror=fail, followlinks=False):
+            for item in (*subdirectories, *filenames):
+                if (Path(directory) / item).is_symlink():
+                    raise refuse(name)
+
+
+# Linux exposes an open descriptor as a path (/proc/self/fd/N) that Git can follow inside its
+# own process; that lets Git read exactly the directories and pack files verified here.
+_FD_PATHS = sys.platform.startswith("linux") and Path("/proc/self/fd").is_dir()
+_DIRECTORY_FLAGS = (
+    os.O_RDONLY
+    | getattr(os, "O_DIRECTORY", 0)
+    | getattr(os, "O_NOFOLLOW", 0)
+    | getattr(os, "O_CLOEXEC", 0)
+)
+_FILE_FLAGS = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+_HEX = frozenset("0123456789abcdef")
+
+
+@contextmanager
+def _pinned_object_view(
+    git_dir: Path, stores: list[Path]
+) -> Iterator[tuple[str | None, tuple[int, ...]]]:
+    """Give Git a private object directory bound to descriptors opened without following links.
+
+    `.git`, `objects`, `objects/pack`, each pack file, and each loose `objects/xx` directory are
+    opened relative to their verified parent with O_NOFOLLOW. The private view points at those
+    descriptors, so swapping a name for a symlink while Git runs cannot change what Git reads.
+    Elsewhere (macOS, Windows) the fingerprint checks around exec are the only guard.
+    """
+
+    if not _FD_PATHS:
+        yield None, ()
+        return
+    descriptors: list[int] = []
+
+    def keep(descriptor: int) -> int:
+        descriptors.append(descriptor)
+        return descriptor
+
+    try:
+        with TemporaryDirectory(prefix="local-mcp-toolbox-git-objects-") as scratch:
+            view = Path(scratch) / "objects"
+            try:
+                _build_object_view(git_dir, stores, view, keep)
+            except OSError as error:
+                # ELOOP from O_NOFOLLOW means a name became a symlink after the check.
+                raise _git_dir_changed() from error
+            yield str(view), tuple(descriptors)
+    finally:
+        for descriptor in descriptors:
+            with suppress(OSError):
+                os.close(descriptor)
+
+
+def _build_object_view(
+    git_dir: Path, stores: list[Path], view: Path, keep: Callable[[int], int]
+) -> None:
+    (view / "info").mkdir(parents=True)
+    (view / "pack").mkdir()
+    git_fd = keep(os.open(git_dir, _DIRECTORY_FLAGS))
+    objects_fd = keep(os.open("objects", _DIRECTORY_FLAGS, dir_fd=git_fd))
+    for entry in sorted(os.listdir(objects_fd)):
+        if entry == "pack":
+            pack_fd = keep(os.open("pack", _DIRECTORY_FLAGS, dir_fd=objects_fd))
+            for name in sorted(os.listdir(pack_fd)):
+                file_fd = keep(os.open(name, _FILE_FLAGS, dir_fd=pack_fd))
+                if stat.S_ISREG(os.fstat(file_fd).st_mode):
+                    os.symlink(f"/proc/self/fd/{file_fd}", view / "pack" / name)
+        elif len(entry) == 2 and set(entry) <= _HEX:
+            fanout_fd = keep(os.open(entry, _DIRECTORY_FLAGS, dir_fd=objects_fd))
+            os.symlink(f"/proc/self/fd/{fanout_fd}", view / entry)
+    if stores:
+        # Alternate stores inside the repository are opened by their resolved path.
+        lines = [f"/proc/self/fd/{keep(os.open(store, _DIRECTORY_FLAGS))}" for store in stores]
+        (view / "info" / "alternates").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _git_dir_changed() -> ToolboxError:
@@ -390,16 +497,48 @@ def _git_dir_changed() -> ToolboxError:
 
 
 def _git_dir_fingerprint(git_dir: Path) -> tuple[object, ...]:
-    """Identify the .git directory, its object and ref stores, and their redirect files."""
+    """Identify .git and every directory Git reads objects or refs from, plus redirect files.
+
+    Directory mtimes are included: renaming, swapping, or creating an entry inside a
+    directory changes its mtime even when the entry is later swapped back.
+    """
 
     parts: list[object] = []
-    for path in (git_dir, git_dir / "objects", git_dir / "refs"):
+
+    def stamp(path: Path, with_mtime: bool = True) -> None:
         try:
             info = os.lstat(path)
-            parts.append((info.st_dev, info.st_ino, info.st_mode))
         except OSError:
-            parts.append(None)
-    for path in (git_dir / "commondir", git_dir / "objects" / "info" / "alternates"):
+            parts.append((str(path), None))
+            return
+        if stat.S_ISLNK(info.st_mode):
+            # Seen mid-swap: never run Git (or return its output) while any link is present.
+            raise _git_dir_changed()
+        identity = (info.st_dev, info.st_ino, info.st_mode)
+        parts.append((str(path), identity + ((info.st_mtime_ns,) if with_mtime else ())))
+
+    # .git's own mtime changes when Git takes index.lock, so only its identity is pinned.
+    stamp(git_dir, with_mtime=False)
+    objects = git_dir / "objects"
+    stamp(objects)
+    try:
+        names = sorted(os.listdir(objects))
+    except OSError:
+        names = []
+    for name in names:
+        stamp(objects / name)
+    for top in (git_dir / "refs", objects / "info", objects / "pack"):
+        stamp(top)
+        for directory, subdirectories, filenames in os.walk(top, followlinks=False):
+            for item in sorted((*subdirectories, *filenames)):
+                stamp(Path(directory) / item)
+    for path in (
+        git_dir / "commondir",
+        git_dir / "packed-refs",
+        git_dir / "HEAD",
+        objects / "info" / "alternates",
+        objects / "info" / "http-alternates",
+    ):
         try:
             parts.append(path.read_bytes())
         except OSError:
@@ -427,6 +566,11 @@ def _safe_git_environment(repository: Path | None = None) -> dict[str, str]:
     if repository is not None:
         # Never search above the approved repository for a different one.
         environment["GIT_CEILING_DIRECTORIES"] = str(repository.parent)
+        # Pin the common and object directories to the approved .git so nothing in it can
+        # redirect them.
+        git_dir = repository / ".git"
+        environment["GIT_COMMON_DIR"] = str(git_dir)
+        environment["GIT_OBJECT_DIRECTORY"] = str(git_dir / "objects")
     return environment
 
 
