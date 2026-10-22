@@ -51,14 +51,6 @@ class GitRunner:
             )
 
         git_dir = repository / ".git"
-        # A `.git` file (gitdir: ...) or a symlink can redirect Git to a repository that was
-        # never approved, so only a real `.git` directory inside the approved path is used.
-        if git_dir.is_symlink() or not git_dir.is_dir():
-            raise ToolboxError(
-                ErrorCategory.PERMISSION_DENIED,
-                "The approved repository must contain its own .git directory.",
-                remediation="Approve the main working tree of a regular, non-linked repository.",
-            )
         _require_self_contained_git_dir(repository, git_dir)
         # Explicit --git-dir/--work-tree win over repo-local core.worktree, so Git can only
         # read the approved working tree.
@@ -228,47 +220,89 @@ def _require_repository(runtime: ServerRuntime, requested_path: str) -> Path:
     return runtime.permissions.require_git_repository(Path(requested_path))
 
 
-def _require_self_contained_git_dir(repository: Path, git_dir: Path) -> None:
-    """Refuse a `.git` directory that borrows refs, objects, or config from elsewhere.
+def _git_denial(reason: str, remediation: str) -> ToolboxError:
+    return ToolboxError(ErrorCategory.PERMISSION_DENIED, reason, remediation=remediation)
 
-    A `commondir` file makes Git read refs, objects, and config from another directory, and
-    `objects/info/alternates` adds object stores; either could expose an unapproved repository.
+
+def _require_self_contained_git_dir(repository: Path, git_dir: Path) -> None:
+    """Refuse any `.git` that lets Git read refs, objects, or config from outside the repository.
+
+    Runs before any Git process is started. Each refusal names its specific reason.
     """
 
-    denied = ToolboxError(
-        ErrorCategory.PERMISSION_DENIED,
-        "The approved repository's .git directory refers to storage outside the repository.",
-        remediation="Approve a self-contained repository without commondir or outside alternates.",
-    )
-    if (git_dir / "commondir").exists() or (git_dir / "commondir").is_symlink():
-        raise denied
-    alternates = git_dir / "objects" / "info" / "alternates"
-    if alternates.is_symlink():
-        raise denied
-    if not alternates.exists():
-        return
-    try:
-        lines = alternates.read_text(encoding="utf-8", errors="replace").splitlines()
-    except OSError as error:
-        raise denied from error
+    if git_dir.is_symlink():
+        raise _git_denial(
+            "The approved repository's .git is a symlink.",
+            "Approve a repository whose .git is a real directory.",
+        )
+    if git_dir.is_file():
+        raise _git_denial(
+            "The approved repository's .git is a gitdir file, as in a linked worktree or "
+            "submodule checkout.",
+            "Approve the main working tree that owns the .git directory instead.",
+        )
+    if not git_dir.is_dir():
+        raise _git_denial(
+            "The approved repository has no .git directory.",
+            "Approve the top level of a Git working tree.",
+        )
+    commondir = git_dir / "commondir"
+    if commondir.exists() or commondir.is_symlink():
+        raise _git_denial(
+            "The approved repository's .git has a commondir file, so Git would read refs, "
+            "objects, and config from another directory.",
+            "Approve the main working tree that owns the shared .git directory instead.",
+        )
     root = repository.resolve()
-    objects = git_dir / "objects"
-    for raw in lines:
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        # Git allows C-style quoted paths here; anything quoted is refused rather than parsed.
-        if line.startswith('"'):
-            raise denied
-        target = Path(line)
-        if not target.is_absolute():
-            target = objects / target
+    pending = [git_dir / "objects"]
+    seen: set[Path] = set()
+    while pending:
+        objects = pending.pop()
         try:
-            resolved = target.resolve(strict=False)
+            key = objects.resolve(strict=False)
         except OSError as error:
-            raise denied from error
-        if not resolved.is_relative_to(root):
-            raise denied
+            raise _alternates_denial() from error
+        if key in seen:
+            continue
+        seen.add(key)
+        if len(seen) > 64:
+            raise _alternates_denial()
+        alternates = objects / "info" / "alternates"
+        if alternates.is_symlink():
+            raise _alternates_denial()
+        if not alternates.is_file():
+            continue
+        try:
+            lines = alternates.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError as error:
+            raise _alternates_denial() from error
+        for raw in lines:
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            # Git allows C-style quoted paths here; refuse them rather than parse them.
+            if line.startswith('"'):
+                raise _alternates_denial()
+            target = Path(line)
+            if not target.is_absolute():
+                # Relative entries are relative to the object store that lists them.
+                target = objects / target
+            try:
+                resolved = target.resolve(strict=False)
+            except OSError as error:
+                raise _alternates_denial() from error
+            if not resolved.is_relative_to(root):
+                raise _alternates_denial()
+            # Alternates chain: the borrowed store may list alternates of its own.
+            pending.append(resolved)
+
+
+def _alternates_denial() -> ToolboxError:
+    return _git_denial(
+        "The approved repository borrows Git objects from outside it through "
+        "objects/info/alternates (for example a clone made with --shared or --reference).",
+        "Run `git repack -a -d` and remove objects/info/alternates, or approve a full clone.",
+    )
 
 
 def _safe_git_environment(repository: Path | None = None) -> dict[str, str]:

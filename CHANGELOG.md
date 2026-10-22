@@ -15,6 +15,11 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
 - Git tools also refuse a `.git` directory that contains a `commondir` file, or
   whose `objects/info/alternates` points outside the approved repository, since
   either makes Git read refs, objects, or config from somewhere else.
+- The alternates check follows the whole alternates chain, including relative
+  entries, so a store inside the repository cannot forward to one outside.
+  Every refusal now names its reason (symlinked `.git`, `gitdir:` file from a
+  linked worktree or submodule checkout, `commondir`, or outside alternates such
+  as `git clone --shared`/`--reference`).
 
 ## [1.5.3] - 2026-10-04
 

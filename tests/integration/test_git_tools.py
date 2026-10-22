@@ -256,3 +256,84 @@ def test_alternates_inside_the_repository_are_allowed(tmp_path: Path, git_reposi
             assert result.is_error is False
 
     asyncio.run(scenario())
+
+
+def _refusal_text(tmp_path: Path, repository: Path, tool: str = "git_recent_commits") -> str:
+    server = _status_server(tmp_path, repository)
+    texts: list[str] = []
+
+    async def scenario() -> None:
+        async with Client(server) as client:
+            result = await client.call_tool(tool, {"repository": str(repository)})
+            assert result.is_error is True
+            texts.append(str(result.content) + str(result.structured_content))
+
+    asyncio.run(scenario())
+    return texts[0]
+
+
+def test_nested_alternates_chain_leaving_the_repository_is_refused(
+    tmp_path: Path, git_repository: Path
+) -> None:
+    outside = _outside_repository(tmp_path)
+    store = git_repository / "store"
+    (store / "info").mkdir(parents=True)
+    info = git_repository / ".git" / "objects" / "info"
+    info.mkdir(parents=True, exist_ok=True)
+    (info / "alternates").write_text("../../store\n", encoding="utf-8")
+    (store / "info" / "alternates").write_text(
+        f"{outside / '.git' / 'objects'}\n", encoding="utf-8"
+    )
+
+    _assert_every_git_tool_refused(tmp_path, git_repository)
+    assert "alternates" in _refusal_text(tmp_path, git_repository)
+
+
+def test_real_linked_worktree_is_refused_with_its_reason(
+    tmp_path: Path, git_repository: Path
+) -> None:
+    linked = tmp_path / "linked-worktree"
+    _git(git_repository, "worktree", "add", "-q", str(linked), "-b", "linked")
+
+    text = _refusal_text(tmp_path, linked)
+    assert "gitdir file" in text and "linked worktree" in text
+
+
+def test_real_submodule_checkout_is_refused_with_its_reason(
+    tmp_path: Path, git_repository: Path
+) -> None:
+    child = _outside_repository(tmp_path)
+    _git(git_repository, "-c", "protocol.file.allow=always", "submodule", "add", str(child), "sub")
+    submodule = git_repository / "sub"
+    assert (submodule / ".git").is_file()
+
+    text = _refusal_text(tmp_path, submodule)
+    assert "gitdir file" in text and "submodule checkout" in text
+
+
+def test_real_shared_clone_is_refused_with_its_reason(tmp_path: Path, git_repository: Path) -> None:
+    shared = tmp_path / "shared-clone"
+    _git(tmp_path, "clone", "-q", "--shared", str(git_repository), str(shared))
+
+    assert "alternates" in _refusal_text(tmp_path, shared)
+
+
+def test_symlinked_dot_git_directory_is_refused(tmp_path: Path) -> None:
+    outside = _outside_repository(tmp_path)
+    approved = tmp_path / "approved-repository"
+    approved.mkdir()
+    try:
+        (approved / ".git").symlink_to(outside / ".git", target_is_directory=True)
+    except OSError:
+        pytest.skip("Symlinks are not available")
+    # Without the symlink check, .git passes is_dir() and Git reads the outside repository.
+    assert (approved / ".git").is_dir()
+
+    _assert_every_git_tool_refused(tmp_path, approved)
+    assert "symlink" in _refusal_text(tmp_path, approved)
+
+
+def test_commondir_refusal_names_its_reason(tmp_path: Path, git_repository: Path) -> None:
+    (git_repository / ".git" / "commondir").write_text("../elsewhere\n", encoding="utf-8")
+
+    assert "commondir" in _refusal_text(tmp_path, git_repository)
