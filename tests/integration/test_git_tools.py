@@ -299,3 +299,153 @@ def test_status_and_diff_never_run_filters_defined_only_in_a_submodule(
     asyncio.run(scenario())
 
     assert not marker.exists(), "Git tools ran a filter defined only in a submodule"
+
+
+def test_git_diff_summary_never_rewrites_the_index(tmp_path: Path, git_repository: Path) -> None:
+    import os
+
+    other = git_repository / "other.txt"
+    other.write_bytes(b"tracked\n")
+    _git(git_repository, "add", "other.txt")
+    _git(git_repository, "commit", "-m", "Add other")
+    index = git_repository / ".git" / "index"
+    past = 1_600_000_000
+    os.utime(index, (past, past))
+    # Make a tracked file stat-dirty but content-identical so a refreshing diff rewrites the index.
+    os.utime(other, (past + 3600, past + 3600))
+    before_bytes = index.read_bytes()
+    before_mtime = index.stat().st_mtime_ns
+
+    server = create_server(
+        build_runtime(
+            ToolboxSettings(
+                profile=PermissionProfile.STANDARD,
+                filesystem=FilesystemSettings(approved_roots=[tmp_path]),
+                integrations=IntegrationSettings(git=True),
+                git=GitSettings(approved_repositories=[git_repository]),
+                audit=AuditSettings(path=tmp_path / "audit" / "events.jsonl"),
+            )
+        )
+    )
+
+    async def scenario() -> None:
+        async with Client(server) as client:
+            diff = await client.call_tool("git_diff_summary", {"repository": str(git_repository)})
+            assert diff.is_error is False
+            data = diff.structured_content["data"]
+            assert [item["path"] for item in data["files"]] == ["README.md"], data
+            assert data["changed_file_count"] == 1
+
+    asyncio.run(scenario())
+
+    assert index.read_bytes() == before_bytes
+    assert index.stat().st_mtime_ns == before_mtime
+
+
+def _diff_paths(tmp_path: Path, repository: Path) -> list[str]:
+    server = create_server(
+        build_runtime(
+            ToolboxSettings(
+                profile=PermissionProfile.STANDARD,
+                filesystem=FilesystemSettings(approved_roots=[tmp_path]),
+                integrations=IntegrationSettings(git=True),
+                git=GitSettings(approved_repositories=[repository]),
+                audit=AuditSettings(path=tmp_path / "audit" / "events.jsonl"),
+            )
+        )
+    )
+    result: list[str] = []
+
+    async def scenario() -> None:
+        async with Client(server) as client:
+            diff = await client.call_tool("git_diff_summary", {"repository": str(repository)})
+            assert diff.is_error is False
+            data = diff.structured_content["data"]
+            assert data["changed_file_count"] == len(data["files"])
+            result.extend(item["path"] for item in data["files"])
+
+    asyncio.run(scenario())
+    return sorted(result)
+
+
+def _commit_files(repository: Path, files: dict[str, bytes]) -> None:
+    for name, content in files.items():
+        (repository / name).write_bytes(content)
+    _git(repository, "add", *files)
+    _git(repository, "commit", "-m", "Add fixtures")
+
+
+def _touch(path: Path) -> None:
+    import os
+
+    stat = path.stat()
+    os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 7_000_000_000))
+
+
+_POSIX_ONLY = pytest.mark.skipif(
+    __import__("sys").platform == "win32", reason="POSIX file modes and file names"
+)
+
+
+def test_git_diff_summary_reports_deleted_empty_tracked_file(
+    tmp_path: Path, git_repository: Path
+) -> None:
+    _commit_files(git_repository, {"empty.txt": b""})
+    (git_repository / "empty.txt").unlink()
+
+    assert _diff_paths(tmp_path, git_repository) == ["README.md", "empty.txt"]
+
+
+def test_git_diff_summary_drops_touched_only_file_next_to_real_changes(
+    tmp_path: Path, git_repository: Path
+) -> None:
+    _commit_files(git_repository, {"touched.txt": b"same\n", "edited.txt": b"one\n"})
+    _touch(git_repository / "touched.txt")
+    (git_repository / "edited.txt").write_bytes(b"one\ntwo\n")
+
+    assert _diff_paths(tmp_path, git_repository) == ["README.md", "edited.txt"]
+
+
+@_POSIX_ONLY
+def test_git_diff_summary_qe_touch_delete_chmod_repro(tmp_path: Path, git_repository: Path) -> None:
+    _commit_files(git_repository, {"a.txt": b"a\n", "b_empty.txt": b"", "c.sh": b"c\n"})
+    _touch(git_repository / "a.txt")
+    (git_repository / "b_empty.txt").unlink()
+    (git_repository / "c.sh").chmod(0o755)
+
+    assert _diff_paths(tmp_path, git_repository) == ["README.md", "b_empty.txt", "c.sh"]
+
+
+@_POSIX_ONLY
+def test_git_diff_summary_red_team_touch_and_chmod(tmp_path: Path, git_repository: Path) -> None:
+    _commit_files(git_repository, {"b": b"b\n", "c": b"c\n"})
+    _touch(git_repository / "b")
+    (git_repository / "c").chmod(0o755)
+
+    assert _diff_paths(tmp_path, git_repository) == ["README.md", "c"]
+
+
+def test_git_diff_summary_reports_merge_conflict_once(tmp_path: Path, git_repository: Path) -> None:
+    _git(git_repository, "checkout", "--", "README.md")
+    _commit_files(git_repository, {"m.txt": b"base\n"})
+    _git(git_repository, "checkout", "-b", "other")
+    _commit_files(git_repository, {"m.txt": b"other\n"})
+    _git(git_repository, "checkout", "-")
+    _commit_files(git_repository, {"m.txt": b"mine\n"})
+    subprocess.run(
+        ["git", "-C", str(git_repository), "merge", "other"], check=False, capture_output=True
+    )
+
+    assert _diff_paths(tmp_path, git_repository) == ["m.txt"]
+
+
+@_POSIX_ONLY
+def test_git_diff_summary_handles_tab_newline_and_unicode_paths(
+    tmp_path: Path, git_repository: Path
+) -> None:
+    names = ["tab\tname.txt", "new\nline.txt", "\u00fcnic\u00f8de \u6587.txt"]
+    _commit_files(git_repository, {name: b"x\n" for name in names})
+    for name in names:
+        (git_repository / name).write_bytes(b"x\ny\n")
+
+    assert _diff_paths(tmp_path, git_repository) == sorted(["README.md", *names])

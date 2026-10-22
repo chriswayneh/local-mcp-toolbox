@@ -23,6 +23,12 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
 - Git status and diff summaries no longer report uncommitted edits inside a
   submodule's own work tree (`--ignore-submodules=dirty`); docs/tools.md now
   lists the exact flags and overrides.
+- `git_diff_summary` now runs `git diff-files -z --raw --numstat` instead of
+  `git diff --numstat` (keeping `--no-ext-diff`, `--no-textconv` and
+  `--ignore-submodules=dirty`), so it no longer rewrites `.git/index` (which happened
+  even with `GIT_OPTIONAL_LOCKS=0`). Only stat-only rows
+  (status M, same mode, 0/0 lines, such as a touched file) are omitted;
+  deletions, additions, type changes and mode changes are still reported.
 
 ## [1.5.3] - 2026-10-04
 
