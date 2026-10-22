@@ -11,6 +11,12 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
   elsewhere, and the result used to show it by file name. Those findings are
   now left out, and the response has a `withheld_findings` count so you can
   see that some were skipped.
+- Bandit now scans a private copy of only the `.py`/`.pyw` files that are
+  authorized when the scan starts, instead of the live directory. Before, the
+  path check ran after Bandit had read the files, so a symlink swapped during or
+  after the scan could slip an outside file's finding through, and a link
+  retargeted between checks could make the whole scan return an error. Findings
+  are now matched back to the copied files, so neither can happen.
 
 ## [1.5.3] - 2026-10-04
 

@@ -55,7 +55,7 @@ The exposed tools cannot edit your files, commit code, restart containers, execu
 | Metrics | Aggregate request outcomes and latency | In-process counters only; no arguments, responses, identifiers, or secrets |
 | Docker | Opt-in container metadata, health, and bounded logs | Official SDK only; no lifecycle, exec, mount, environment, or command access |
 | Logs | Tails, literal search, and deterministic error grouping | Dedicated approved roots, output limits, and central redaction |
-| Security | Bandit availability and normalized scan findings | Fixed scanner invocation; no user-controlled command arguments or fixes |
+| Security | Bandit availability and normalized scan findings | Fixed scanner invocation on a private copy of only the authorized files; no user-controlled command arguments or fixes |
 | Infrastructure | Project-type detection and top-level configuration inventory | Separate approved roots; no recursive content inspection |
 | Incidents | Timestamped evidence and deterministic summaries | Read-only, bounded observations: never root-cause claims |
 | Audit | Sanitized JSONL accountability trail | Shape-only request summaries, retention, and size limits |

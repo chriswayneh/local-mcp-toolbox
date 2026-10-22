@@ -35,6 +35,11 @@ class ScannerResult:
     stdout: str
 
 
+# Bandit's own recursion rules: which files it scans and which directories it skips.
+_BANDIT_SUFFIXES = frozenset({".py", ".pyw"})
+_BANDIT_SKIPPED_DIRECTORIES = frozenset(
+    {".svn", "CVS", ".bzr", ".hg", ".git", "__pycache__", ".tox", ".eggs"}
+)
 _INVENTORY_SCANNERS = ("bandit", "checkov", "gitleaks", "hadolint", "pip-audit", "semgrep", "trivy")
 
 
@@ -146,12 +151,17 @@ def register_security_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[
                 remediation="Use scanner='bandit' or inspect security_scanner_inventory.",
             )
         root = _require_security_root(runtime, repository)
-        raw_findings = _parse_bandit_findings(runner.run_bandit(root).stdout)
-        findings = [
-            _normalize_bandit_finding(finding, root)
-            for finding in raw_findings
-            if _finding_is_authorized(runtime, finding, root)
-        ]
+        with TemporaryDirectory(prefix="local-mcp-toolbox-scan-snapshot-") as snapshot_dir:
+            # Bandit scans a private copy of only the files authorized right now, so a symlink
+            # swapped during or after the scan cannot change what was read or approved.
+            snapshot = Path(snapshot_dir).resolve()
+            authorized = _snapshot_authorized_sources(runtime, root, snapshot)
+            raw_findings = _parse_bandit_findings(runner.run_bandit(snapshot).stdout)
+        findings = []
+        for finding in raw_findings:
+            relative = _authorized_relative_path(finding, snapshot, authorized)
+            if relative is not None:
+                findings.append(_normalize_bandit_finding(finding, relative))
         withheld = len(raw_findings) - len(findings)
         page = findings[:result_limit]
         return bounded_response(
@@ -226,28 +236,79 @@ def _parse_bandit_findings(output: str) -> list[dict[str, Any]]:
     return [finding for finding in raw_findings if isinstance(finding, dict)]
 
 
-def _finding_is_authorized(runtime: ServerRuntime, finding: dict[str, Any], root: Path) -> bool:
-    """Keep a finding only if its file resolves inside the scan root and passes the path policy.
+def _snapshot_authorized_sources(runtime: ServerRuntime, root: Path, snapshot: Path) -> set[str]:
+    """Copy every authorized Bandit source file under ``root`` into ``snapshot``.
 
-    Bandit recurses on its own and follows file symlinks, so it can report on files outside the
-    approved root or files that match a blocked pattern. Those findings are withheld.
+    Bandit follows file symlinks on its own, so it could read files outside the approved root
+    or files that match a blocked pattern. Instead it scans this copy: each file is resolved,
+    checked against the root and the path policy, opened, and verified to still be the file
+    that was checked before its bytes are copied. Returns the root-relative POSIX paths copied.
     """
+
+    authorized: set[str] = set()
+    for directory, subdirectories, filenames in os.walk(root, followlinks=False):
+        subdirectories[:] = sorted(
+            name
+            for name in subdirectories
+            if name not in _BANDIT_SKIPPED_DIRECTORIES and not name.endswith(".egg")
+        )
+        for name in sorted(filenames):
+            if Path(name).suffix.lower() not in _BANDIT_SUFFIXES:
+                continue
+            entry = Path(directory) / name
+            relative = _copy_if_authorized(runtime, root, entry, snapshot)
+            if relative is not None:
+                authorized.add(relative)
+    return authorized
+
+
+def _copy_if_authorized(
+    runtime: ServerRuntime, root: Path, entry: Path, snapshot: Path
+) -> str | None:
+    try:
+        relative = entry.relative_to(root)
+        canonical = entry.resolve(strict=True)
+        if not canonical.is_relative_to(root):
+            return None
+        policy = runtime.permissions.security
+        if not (policy.check_path(entry).allowed and policy.check_path(canonical).allowed):
+            return None
+        expected = os.stat(canonical)
+        with canonical.open("rb") as source:
+            opened = os.fstat(source.fileno())
+            # The file opened must be the one approved, and the path must still resolve to it.
+            if (opened.st_dev, opened.st_ino) != (expected.st_dev, expected.st_ino):
+                return None
+            if entry.resolve(strict=True) != canonical:
+                return None
+            target = snapshot / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with target.open("xb") as copy:
+                shutil.copyfileobj(source, copy)
+    except (OSError, ValueError):
+        return None
+    return relative.as_posix()
+
+
+def _authorized_relative_path(
+    finding: dict[str, Any], snapshot: Path, authorized: set[str]
+) -> str | None:
+    """Map a Bandit filename back to the root-relative path it was copied from, if any."""
 
     filename = finding.get("filename")
     if not isinstance(filename, str) or not filename:
-        return False
+        return None
+    reported = Path(filename)
+    if not reported.is_absolute():
+        reported = snapshot / reported
     try:
-        canonical = Path(filename).resolve(strict=False)
-    except OSError:
-        return False
-    if not canonical.is_relative_to(root):
-        return False
-    return runtime.permissions.security.check_path(canonical).allowed
+        relative = Path(os.path.normpath(reported)).relative_to(snapshot).as_posix()
+    except ValueError:
+        return None
+    return relative if relative in authorized else None
 
 
-def _normalize_bandit_finding(finding: dict[str, Any], root: Path) -> dict[str, Any]:
-    filename = str(finding.get("filename", ""))
-    safe_path = Path(filename).resolve(strict=False).relative_to(root).as_posix()
+def _normalize_bandit_finding(finding: dict[str, Any], safe_path: str) -> dict[str, Any]:
     return {
         "finding_id": finding.get("test_id"),
         "source": "bandit",

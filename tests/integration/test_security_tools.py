@@ -35,24 +35,29 @@ def _server(tmp_path: Path):
 
 def test_security_scan_returns_normalized_redacted_findings(tmp_path: Path, monkeypatch) -> None:
     root, server = _server(tmp_path)
-    report = {
-        "results": [
-            {
-                "test_id": "B105",
-                "test_name": "hardcoded_password_string",
-                "issue_severity": "LOW",
-                "issue_confidence": "MEDIUM",
-                "filename": str(root / "src" / "settings.py"),
-                "line_number": 12,
-                "issue_text": "Possible password=ghp_123456789012345678901234567890",
-                "more_info": "https://bandit.readthedocs.io/en/latest/plugins/b105_hardcoded_password_string.html",
-            }
-        ]
-    }
+    (root / "src").mkdir()
+    (root / "src" / "settings.py").write_text("PASSWORD = 'x'\n", encoding="utf-8")
+
+    def report_for(repository: Path) -> dict[str, object]:
+        return {
+            "results": [
+                {
+                    "test_id": "B105",
+                    "test_name": "hardcoded_password_string",
+                    "issue_severity": "LOW",
+                    "issue_confidence": "MEDIUM",
+                    "filename": str(repository / "src" / "settings.py"),
+                    "line_number": 12,
+                    "issue_text": "Possible password=ghp_123456789012345678901234567890",
+                    "more_info": "https://bandit.readthedocs.io/en/latest/plugins/b105_hardcoded_password_string.html",
+                }
+            ]
+        }
+
     monkeypatch.setattr(
         ScannerRunner,
         "run_bandit",
-        lambda self, repository: ScannerResult(stdout=json.dumps(report)),
+        lambda self, repository: ScannerResult(stdout=json.dumps(report_for(repository))),
     )
 
     async def scenario() -> None:
@@ -149,19 +154,21 @@ def test_security_scan_withholds_findings_outside_root_or_blocked(
             "issue_text": f"finding in {filename.name}",
         }
 
-    report = {
-        "results": [
-            finding(root / "app.py"),
-            finding(outside),
-            finding(root / "linked.py"),
-            finding(root / ".env"),
-            finding(root / "keys" / "server.pem"),
-        ]
-    }
+    def report_for(repository: Path) -> dict[str, object]:
+        return {
+            "results": [
+                finding(repository / "app.py"),
+                finding(outside),
+                finding(repository / "linked.py"),
+                finding(repository / ".env"),
+                finding(repository / "keys" / "server.pem"),
+            ]
+        }
+
     monkeypatch.setattr(
         ScannerRunner,
         "run_bandit",
-        lambda self, repository: ScannerResult(stdout=json.dumps(report)),
+        lambda self, repository: ScannerResult(stdout=json.dumps(report_for(repository))),
     )
 
     async def scenario() -> None:
@@ -175,5 +182,121 @@ def test_security_scan_withholds_findings_outside_root_or_blocked(
             assert data["total_findings"] == 1
             assert data["withheld_findings"] == 4
             assert "creds.py" not in str(result.structured_content)
+
+    asyncio.run(scenario())
+
+
+def _finding(filename: Path) -> dict[str, object]:
+    return {
+        "test_id": "B105",
+        "test_name": "hardcoded_password_string",
+        "issue_severity": "LOW",
+        "filename": str(filename),
+        "line_number": 1,
+        "issue_text": f"finding in {filename.name}",
+    }
+
+
+def test_symlink_retargeted_after_scan_cannot_release_outside_findings(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root, server = _server(tmp_path)
+    outside = tmp_path / "outside" / "creds.py"
+    outside.parent.mkdir()
+    outside.write_text("SECRET = 'outside-only'\n", encoding="utf-8")
+    link = root / "linked.py"
+    link.symlink_to(outside)
+    (root / "app.py").write_text("x = 1\n", encoding="utf-8")
+    seen_contents: list[str] = []
+
+    def fake_bandit(self: ScannerRunner, repository: Path) -> ScannerResult:
+        scanned = repository / "linked.py"
+        if scanned.exists():
+            seen_contents.append(scanned.read_text(encoding="utf-8"))
+        # The scanner has read the outside file; now the link is swapped for an inside file
+        # so a post-scan path check would wrongly approve the finding.
+        link.unlink()
+        link.write_text("x = 2\n", encoding="utf-8")
+        report = {"results": [_finding(repository / "app.py"), _finding(repository / "linked.py")]}
+        return ScannerResult(stdout=json.dumps(report))
+
+    monkeypatch.setattr(ScannerRunner, "run_bandit", fake_bandit)
+
+    async def scenario() -> None:
+        async with Client(server) as client:
+            result = await client.call_tool(
+                "security_scan_repository", {"repository": str(root), "limit": 10}
+            )
+            assert result.is_error is False
+            data = result.structured_content["data"]
+            assert [item["file"] for item in data["findings"]] == ["app.py"]
+            assert data["withheld_findings"] == 1
+
+    asyncio.run(scenario())
+    assert "SECRET = 'outside-only'\n" not in seen_contents, "scanner was given an outside file"
+
+
+def test_path_changing_after_authorization_does_not_discard_the_response(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from mcp_toolbox.permissions.service import FilesystemAuthorizer
+
+    root, server = _server(tmp_path)
+    outside = tmp_path / "outside" / "real.py"
+    outside.parent.mkdir()
+    outside.write_text("x = 1\n", encoding="utf-8")
+    (root / "real.py").write_text("x = 1\n", encoding="utf-8")
+    (root / "app.py").write_text("x = 1\n", encoding="utf-8")
+    flip = root / "flip.py"
+    flip.symlink_to(root / "real.py")
+    state = {"scanned": False, "flipped": False}
+    original_check = FilesystemAuthorizer.check_path
+
+    def check_then_retarget(self: FilesystemAuthorizer, requested_path: Path):  # type: ignore[no-untyped-def]
+        decision = original_check(self, requested_path)
+        if state["scanned"] and not state["flipped"] and requested_path.name == "real.py":
+            # Authorization just approved the link; now it is retargeted outside the root.
+            state["flipped"] = True
+            flip.unlink()
+            flip.symlink_to(outside)
+        return decision
+
+    def fake_bandit(self: ScannerRunner, repository: Path) -> ScannerResult:
+        state["scanned"] = True
+        report = {"results": [_finding(repository / "app.py"), _finding(repository / "flip.py")]}
+        return ScannerResult(stdout=json.dumps(report))
+
+    monkeypatch.setattr(ScannerRunner, "run_bandit", fake_bandit)
+    monkeypatch.setattr(FilesystemAuthorizer, "check_path", check_then_retarget)
+
+    async def scenario() -> None:
+        async with Client(server) as client:
+            result = await client.call_tool(
+                "security_scan_repository", {"repository": str(root), "limit": 10}
+            )
+            assert result.is_error is False
+            files = [item["file"] for item in result.structured_content["data"]["findings"]]
+            assert "app.py" in files
+
+    asyncio.run(scenario())
+
+
+def test_real_bandit_findings_map_back_to_root_relative_paths(tmp_path: Path) -> None:
+    root, server = _server(tmp_path)
+    (root / "pkg").mkdir()
+    (root / "pkg" / "settings.py").write_text('password = "hunter2-literal"\n', encoding="utf-8")
+
+    async def scenario() -> None:
+        async with Client(server) as client:
+            result = await client.call_tool(
+                "security_scan_repository", {"repository": str(root), "limit": 10}
+            )
+            assert result.is_error is False
+            data = result.structured_content["data"]
+            assert [(f["file"], f["finding_id"]) for f in data["findings"]] == [
+                ("pkg/settings.py", "B105")
+            ]
+            assert data["findings"][0]["line_number"] == 1
+            assert data["withheld_findings"] == 0
 
     asyncio.run(scenario())
