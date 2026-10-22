@@ -29,6 +29,8 @@ _GIT_METADATA_ENTRIES = (
     "info",
     "worktrees",
 )
+# Longest alternates chain accepted; longer chains are refused rather than walked.
+_MAX_ALTERNATE_STORES = 64
 _READ_ONLY = ToolAnnotations(
     read_only_hint=True,
     destructive_hint=False,
@@ -287,6 +289,15 @@ def _require_self_contained_git_dir(repository: Path, git_dir: Path) -> None:
                 f"The approved repository's .git/{name} resolves outside the repository.",
                 "Approve a self-contained repository.",
             )
+    for name in ("objects", "refs"):
+        _refuse_nested_symlinks(git_dir / name, name)
+    if os.environ.get("GIT_ALTERNATE_OBJECT_DIRECTORIES"):
+        # The Git environment is scrubbed, but refuse loudly rather than rely on that alone.
+        raise _git_denial(
+            "GIT_ALTERNATE_OBJECT_DIRECTORIES is set in the server environment, which would let "
+            "Git borrow objects from outside the repository.",
+            "Unset GIT_ALTERNATE_OBJECT_DIRECTORIES for the toolbox process.",
+        )
     commondir = git_dir / "commondir"
     if commondir.exists() or commondir.is_symlink():
         raise _git_denial(
@@ -299,8 +310,13 @@ def _require_self_contained_git_dir(repository: Path, git_dir: Path) -> None:
         raise _alternates_denial()
     pending = [initial_store]
     seen: set[Path] = set()
+    visits = 0
     while pending:
         objects = pending.pop()
+        visits += 1
+        if visits > _MAX_ALTERNATE_STORES * 4:
+            # Hard stop on the walk itself, independent of the duplicate check below.
+            raise _alternates_denial()
         try:
             key = objects.resolve(strict=False)
         except OSError as error:
@@ -308,8 +324,15 @@ def _require_self_contained_git_dir(repository: Path, git_dir: Path) -> None:
         if key in seen:
             continue
         seen.add(key)
-        if len(seen) > 64:
+        if len(seen) > _MAX_ALTERNATE_STORES:
             raise _alternates_denial()
+        http_alternates = objects / "info" / "http-alternates"
+        if http_alternates.exists() or http_alternates.is_symlink():
+            raise _git_denial(
+                "The approved repository lists objects/info/http-alternates, which borrows "
+                "Git objects from another location.",
+                "Remove objects/info/http-alternates or approve a full clone.",
+            )
         alternates = objects / "info" / "alternates"
         if alternates.is_symlink():
             raise _alternates_denial()
@@ -338,6 +361,25 @@ def _require_self_contained_git_dir(repository: Path, git_dir: Path) -> None:
                 raise _alternates_denial()
             # Alternates chain: the borrowed store may list alternates of its own.
             pending.append(resolved)
+
+
+def _refuse_nested_symlinks(top: Path, name: str) -> None:
+    """Refuse a symlink anywhere under .git/objects or .git/refs (e.g. objects/ab or pack)."""
+
+    def fail(_error: OSError) -> None:
+        raise _git_denial(
+            f"The approved repository's .git/{name} could not be inspected.",
+            "Check the repository's .git directory permissions.",
+        )
+
+    for directory, subdirectories, filenames in os.walk(top, onerror=fail, followlinks=False):
+        for entry in (*subdirectories, *filenames):
+            if (Path(directory) / entry).is_symlink():
+                raise _git_denial(
+                    f"The approved repository's .git/{name} contains a symlink, so Git could "
+                    "read objects or refs from outside the repository.",
+                    "Replace the symlink with the real directory or file.",
+                )
 
 
 def _git_dir_changed() -> ToolboxError:

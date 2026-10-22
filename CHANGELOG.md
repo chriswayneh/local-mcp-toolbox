@@ -26,6 +26,10 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
   starts and after it exits, and if the `.git` directory, its object or ref
   store, `commondir`, or alternates changed in between, the output is discarded
   and the call is refused.
+- A symlink anywhere under `.git/objects` or `.git/refs` (for example a loose
+  object fan-out directory or `objects/pack`) is refused. `http-alternates` and a
+  `GIT_ALTERNATE_OBJECT_DIRECTORIES` setting in the server environment each get
+  their own refusal reason.
 
 ## [1.5.3] - 2026-10-04
 

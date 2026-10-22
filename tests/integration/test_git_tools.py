@@ -442,3 +442,161 @@ def test_git_dir_swapped_during_run_is_refused(
     text = _refusal_text(tmp_path, git_repository)
     assert "outside-only" not in text
     assert "changed" in text
+
+
+def _successful_call(tmp_path: Path, repository: Path) -> None:
+    server = _status_server(tmp_path, repository)
+
+    async def scenario() -> None:
+        async with Client(server) as client:
+            result = await client.call_tool("git_recent_commits", {"repository": str(repository)})
+            assert result.is_error is False, result.content
+
+    asyncio.run(scenario())
+
+
+def _write_alternates(objects: Path, text: str) -> None:
+    (objects / "info").mkdir(parents=True, exist_ok=True)
+    (objects / "info" / "alternates").write_text(text, encoding="utf-8")
+
+
+@pytest.mark.parametrize("kind", ["loose", "pack"])
+def test_symlink_nested_inside_objects_is_refused(
+    tmp_path: Path, git_repository: Path, kind: str
+) -> None:
+    outside = _outside_repository(tmp_path)
+    objects = git_repository / ".git" / "objects"
+    if kind == "pack":
+        _git(outside, "gc", "-q")
+        shutil.rmtree(objects / "pack", onexc=_make_writable_and_retry)
+        _symlink_or_skip(objects / "pack", outside / ".git" / "objects" / "pack")
+    else:
+        head = _git_output(outside, "rev-parse", "HEAD")
+        fanout = objects / head[:2]
+        if fanout.exists():
+            shutil.rmtree(fanout, onexc=_make_writable_and_retry)
+        _symlink_or_skip(fanout, outside / ".git" / "objects" / head[:2])
+
+    _assert_every_git_tool_refused(tmp_path, git_repository)
+    assert "contains a symlink" in _refusal_text(tmp_path, git_repository)
+
+
+def test_symlink_nested_inside_refs_is_refused(tmp_path: Path, git_repository: Path) -> None:
+    outside = _outside_repository(tmp_path)
+    heads = git_repository / ".git" / "refs" / "heads"
+    _symlink_or_skip(heads / "borrowed", outside / ".git" / "refs" / "heads" / "master")
+
+    assert "contains a symlink" in _refusal_text(tmp_path, git_repository)
+
+
+def test_dangling_commondir_symlink_is_refused(tmp_path: Path, git_repository: Path) -> None:
+    _symlink_or_skip(git_repository / ".git" / "commondir", tmp_path / "does-not-exist")
+    assert not (git_repository / ".git" / "commondir").exists()
+
+    assert "commondir" in _refusal_text(tmp_path, git_repository)
+
+
+def test_alternates_cycle_inside_the_repository_is_allowed(
+    tmp_path: Path, git_repository: Path
+) -> None:
+    store_a = git_repository / "store-a"
+    store_b = git_repository / "store-b"
+    store_a.mkdir()
+    store_b.mkdir()
+    _write_alternates(git_repository / ".git" / "objects", "../../store-a\n")
+    _write_alternates(store_a, "../store-b\n")
+    _write_alternates(store_b, "../store-a\n")
+
+    _successful_call(tmp_path, git_repository)
+
+
+def test_overlong_alternates_chain_is_refused(tmp_path: Path, git_repository: Path) -> None:
+    from mcp_toolbox.tools.git.handlers import _MAX_ALTERNATE_STORES
+
+    stores = [git_repository / f"store-{index}" for index in range(_MAX_ALTERNATE_STORES + 2)]
+    for store in stores:
+        store.mkdir()
+    _write_alternates(git_repository / ".git" / "objects", f"{stores[0]}\n")
+    for current, following in zip(stores, stores[1:], strict=False):
+        _write_alternates(current, f"{following}\n")
+
+    assert "alternates" in _refusal_text(tmp_path, git_repository)
+
+
+def test_alternates_chain_at_the_cap_is_allowed(tmp_path: Path, git_repository: Path) -> None:
+    from mcp_toolbox.tools.git.handlers import _MAX_ALTERNATE_STORES
+
+    stores = [git_repository / f"store-{index}" for index in range(_MAX_ALTERNATE_STORES - 1)]
+    for store in stores:
+        store.mkdir()
+    _write_alternates(git_repository / ".git" / "objects", f"{stores[0]}\n")
+    for current, following in zip(stores, stores[1:], strict=False):
+        _write_alternates(current, f"{following}\n")
+
+    _successful_call(tmp_path, git_repository)
+
+
+def test_symlinked_alternates_file_is_refused(tmp_path: Path, git_repository: Path) -> None:
+    # .git/objects itself is covered by the nested-symlink walk, so the alternates file
+    # sits in a chained store elsewhere in the repository.
+    harmless = git_repository / "harmless-alternates"
+    harmless.write_text("", encoding="utf-8")
+    store = git_repository / "store"
+    (store / "info").mkdir(parents=True)
+    _write_alternates(git_repository / ".git" / "objects", "../../store\n")
+    _symlink_or_skip(store / "info" / "alternates", harmless)
+
+    assert "alternates" in _refusal_text(tmp_path, git_repository)
+
+
+def test_quoted_alternates_line_is_refused(tmp_path: Path, git_repository: Path) -> None:
+    (git_repository / "store").mkdir()
+    _write_alternates(git_repository / ".git" / "objects", '"../../store"\n')
+
+    assert "alternates" in _refusal_text(tmp_path, git_repository)
+
+
+def test_commented_alternates_line_is_ignored(tmp_path: Path, git_repository: Path) -> None:
+    # Treated as a path, this comment would escape the repository and be refused.
+    _write_alternates(git_repository / ".git" / "objects", "#/../../../../../../outside\n")
+
+    _successful_call(tmp_path, git_repository)
+
+
+def test_http_alternates_has_its_own_refusal(tmp_path: Path, git_repository: Path) -> None:
+    info = git_repository / ".git" / "objects" / "info"
+    info.mkdir(parents=True, exist_ok=True)
+    (info / "http-alternates").write_text("https://example.test/objects\n", encoding="utf-8")
+
+    assert "http-alternates" in _refusal_text(tmp_path, git_repository)
+
+
+def test_alternate_object_directories_env_has_its_own_refusal(
+    tmp_path: Path, git_repository: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("GIT_ALTERNATE_OBJECT_DIRECTORIES", str(tmp_path / "elsewhere"))
+
+    assert "GIT_ALTERNATE_OBJECT_DIRECTORIES" in _refusal_text(tmp_path, git_repository)
+
+
+def test_git_is_pinned_with_git_dir_work_tree_and_ceiling(
+    tmp_path: Path, git_repository: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mcp_toolbox.tools.git import handlers
+
+    real_run = handlers.subprocess.run
+    seen: list[tuple[list[str], dict[str, str]]] = []
+
+    def recording_run(command, *args, **kwargs):  # type: ignore[no-untyped-def]
+        seen.append((list(command), dict(kwargs["env"])))
+        return real_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(handlers.subprocess, "run", recording_run)
+    _successful_call(tmp_path, git_repository)
+
+    repository = git_repository.resolve()
+    assert seen
+    for command, env in seen:
+        assert f"--git-dir={repository / '.git'}" in command
+        assert f"--work-tree={repository}" in command
+        assert env["GIT_CEILING_DIRECTORIES"] == str(repository.parent)
