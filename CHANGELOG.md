@@ -38,8 +38,12 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
   as `authToken`, `accessToken`, `refreshToken`, `idToken`, and `myApiKey`,
   prefixed keys such as `client_credentials` and `user_pass`, and XML elements
   with attributes or prefixes (`<password type="x">`, `<db_password>`) are
-  redacted. Pathological long lines no longer take seconds to redact (two
-  patterns backtracked quadratically).
+  redacted, as are all-caps keys without a separator (`AUTHTOKEN`,
+  `MYAPIKEY`). A quoted marker is treated as already redacted only when the
+  rest of the line is structural (closing brackets, or another quoted key), so
+  `password="[REDACTED_X]", hunter22` is redacted. Pathological long lines no
+  longer take seconds to redact (several patterns and the trailing-marker trim
+  were quadratic).
 
 ## [1.5.3] - 2026-10-04
 

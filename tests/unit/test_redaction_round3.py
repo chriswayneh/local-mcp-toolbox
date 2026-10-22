@@ -118,3 +118,57 @@ def test_rule_matching_only_a_marker_counts_nothing() -> None:
     result = R.redact("cookie: [REDACTED_COOKIE]")
     assert result.text == "cookie: [REDACTED_COOKIE]"
     assert result.redaction_count == 0
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        'password="[REDACTED_X]", hunter22',
+        "password='[REDACTED_X]' }hunter22",
+        'password="[REDACTED_X]";hunter22',
+        '"password": "[REDACTED_X]", hunter22',
+        'authToken="[REDACTED_X]"]hunter22',
+        '{"password": "[REDACTED_X]"}, hunter22',
+    ],
+)
+def test_fake_quoted_marker_cannot_hide_a_secret(raw: str) -> None:
+    assert "hunter22" not in R.redact(raw).text
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        '{"a": {"password": "[REDACTED_PASSWORD]"}, "b": 1}',
+        "password: '[REDACTED_PASSWORD]'",
+    ],
+)
+def test_quoted_marker_with_structural_rest_is_kept(raw: str) -> None:
+    result = R.redact(raw)
+    assert result.text == raw
+    assert result.redaction_count == 0
+
+
+@pytest.mark.parametrize("key", ["AUTHTOKEN", "ACCESSTOKEN", "MYAPIKEY", "GITHUBTOKEN"])
+def test_all_caps_keys_without_separator_are_redacted(key: str) -> None:
+    assert "abc" not in R.redact(f"{key}=abc").text
+    assert "abc" not in R.redact(f'{{"{key}": "abc"}}').text
+
+
+def test_all_caps_rule_skips_plain_words() -> None:
+    assert R.redact("TOKENS=3 MONKEY=1").text == "TOKENS=3 MONKEY=1"
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "password=[REDACTED_ " + "]" * 300_000,
+        "password=x" + "[REDACTED_A]" * 30_000,
+        "password=x" + "A]" * 150_000,
+        "AUTH" * 50_000 + "TOKEN=1",
+    ],
+    ids=["brackets-300k", "markers-30k", "letters-brackets-150k", "caps-200k"],
+)
+def test_trailing_marker_trim_is_linear(raw: str) -> None:
+    started = time.perf_counter()
+    R.redact(raw)
+    assert time.perf_counter() - started < 2.0

@@ -31,11 +31,15 @@ class _Rule:
 _MARKER_AHEAD = r"(?:\[REDACTED_[A-Z_]+\]['\"]?[ \t,;}\]]*)+$"
 # After a closing quote, the next non-blank character must end the value (or the line).
 _QUOTE_END = r"(?=[ \t]*(?:[,;}\]):]|$))"
-# A properly quoted marker followed by a structural delimiter, e.g. JSON ``"[REDACTED_X]", ``.
-_QUOTED_MARKER = r"(?P<mq>['\"])\[REDACTED_[A-Z_]+\](?P=mq)" + _QUOTE_END
+# A quoted marker counts as already redacted only when the rest of the line is structural:
+# closing brackets/separators up to end of line, or a separator then another quoted key
+# (JSON ``"[REDACTED_X]", "user": ...``). ``"[REDACTED_X]", hunter22`` is not skipped.
+_STRUCTURAL_REST = r"(?=[ \t]*(?:[,;}\])][ \t]*)*(?:$|['\"][^'\"\r\n]*['\"][ \t]*[:=]))"
+_QUOTED_MARKER = r"(?P<mq>['\"])\[REDACTED_[A-Z_]+\](?P=mq)" + _STRUCTURAL_REST
 
 
 _TRAILING_DELIMITERS = " \t,;}]'\""
+_MARKER_NAME_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZ_")
 _MARKER_BODY = re.compile(r"\[REDACTED_[A-Z_]+\]")
 
 
@@ -51,10 +55,15 @@ def _trim_trailing_markers(text: str, start: int, end: int) -> int:
     probe = end
     while probe > start:
         if text[probe - 1] == "]":
-            opening = text.rfind("[REDACTED_", start, probe)
+            # Scan left over the marker's own alphabet only, so each character is visited a
+            # bounded number of times and long runs of "]" stay linear.
+            cursor = probe - 1
+            while cursor > start and text[cursor - 1] in _MARKER_NAME_CHARS:
+                cursor -= 1
+            opening = cursor - 1
             if opening >= start and _MARKER_BODY.fullmatch(text, opening, probe):
                 # Drop the marker and anything blank before it; keep scanning left.
-                end = probe = opening
+                end = opening
                 while end > start and text[end - 1] in " \t":
                     end -= 1
                 probe = end
@@ -81,7 +90,7 @@ def _keyed_rules(category: str, key: str) -> tuple[_Rule, _Rule]:
             # Only `key: "value"` (JSON, YAML, dict reprs). With `key=` an opening quote
             # proves nothing about where the value ends, so the unquoted rule takes the line.
             rf"(?im){key}['\"]?[ \t]*:[ \t]*" + r"(?P<quote>['\"])"
-            r"(?!\[REDACTED_[A-Z_]+\](?P=quote)" + _QUOTE_END + r")"
+            r"(?!\[REDACTED_[A-Z_]+\](?P=quote)" + _STRUCTURAL_REST + r")"
             r"(?P<secret>(?:\\[^\r\n]|(?P=quote)(?P=quote)|(?!(?P=quote))[^\\\r\n])+)"
             # The closing quote must end the value; otherwise the unquoted rule takes the line.
             r"(?P=quote)" + _QUOTE_END
@@ -168,6 +177,11 @@ class Redactor:
         *_keyed_rules(
             "API_KEY",
             r"(?<![a-z0-9_.-])(?:[a-z0-9_.-]*[-_.])?(?:api[-_]?key|token)(?![a-z0-9_.-])",
+        ),
+        # All-caps keys with no separator, such as AUTHTOKEN or MYAPIKEY.
+        *_keyed_rules(
+            "API_KEY",
+            r"(?-i:(?<![A-Za-z0-9_.-])[A-Z0-9]+(?:TOKEN|APIKEY)S?(?![A-Za-z0-9_.-]))",
         ),
         # camelCase keys such as authToken, accessToken, refreshToken, idToken, myApiKey.
         *_keyed_rules(
