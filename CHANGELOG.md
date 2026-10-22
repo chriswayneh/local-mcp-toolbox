@@ -20,6 +20,12 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
   Every refusal now names its reason (symlinked `.git`, `gitdir:` file from a
   linked worktree or submodule checkout, `commondir`, or outside alternates such
   as `git clone --shared`/`--reference`).
+- A symlink at `.git/objects`, `refs`, `HEAD`, `config`, `packed-refs`, `logs`,
+  `info`, or `worktrees` is refused, and `objects` and `refs` must resolve
+  inside the repository. The containment check runs again right before Git
+  starts and after it exits, and if the `.git` directory, its object or ref
+  store, `commondir`, or alternates changed in between, the output is discarded
+  and the call is refused.
 
 ## [1.5.3] - 2026-10-04
 

@@ -345,3 +345,100 @@ def test_commondir_refusal_names_its_reason(tmp_path: Path, git_repository: Path
     (git_repository / ".git" / "commondir").write_text("../elsewhere\n", encoding="utf-8")
 
     assert "commondir" in _refusal_text(tmp_path, git_repository)
+
+
+def _git_output(repository: Path, *arguments: str) -> str:
+    return subprocess.run(
+        ["git", "-C", str(repository), *arguments],
+        check=True,
+        shell=False,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def _symlink_or_skip(link: Path, target: Path) -> None:
+    try:
+        link.symlink_to(target, target_is_directory=target.is_dir())
+    except (OSError, NotImplementedError):
+        pytest.skip("Symlinks cannot be created on this system")
+
+
+def test_symlinked_objects_store_pointing_outside_is_refused(
+    tmp_path: Path, git_repository: Path
+) -> None:
+    outside = _outside_repository(tmp_path)
+    git_dir = git_repository / ".git"
+    shutil.rmtree(git_dir / "objects", onexc=_make_writable_and_retry)
+    _symlink_or_skip(git_dir / "objects", outside / ".git" / "objects")
+    outside_head = _git_output(outside, "rev-parse", "HEAD")
+    branch = _git_output(git_repository, "symbolic-ref", "--short", "HEAD")
+    (git_dir / "refs" / "heads" / branch).write_text(outside_head + "\n", encoding="utf-8")
+    # Sanity check: plain Git now reads the outside repository's commit.
+    assert "outside-only commit subject" in _git_output(git_repository, "log", "-1", "--format=%s")
+
+    _assert_every_git_tool_refused(tmp_path, git_repository)
+    assert "symlink" in _refusal_text(tmp_path, git_repository)
+
+
+@pytest.mark.parametrize(
+    "name", ["refs", "HEAD", "config", "packed-refs", "logs", "info", "worktrees"]
+)
+def test_symlinked_git_metadata_is_refused(tmp_path: Path, git_repository: Path, name: str) -> None:
+    outside = _outside_repository(tmp_path)
+    git_dir = git_repository / ".git"
+    entry = git_dir / name
+    target = outside / ".git" / name
+    if not target.exists():
+        target = tmp_path / f"outside-{name}"
+        target.mkdir()
+    if entry.is_dir():
+        shutil.rmtree(entry, onexc=_make_writable_and_retry)
+    elif entry.exists():
+        entry.unlink()
+    _symlink_or_skip(entry, target)
+
+    _assert_every_git_tool_refused(tmp_path, git_repository)
+
+
+def test_containment_is_rechecked_after_git_runs(
+    tmp_path: Path, git_repository: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mcp_toolbox.tools.git import handlers
+
+    real_run = handlers.subprocess.run
+
+    def plant_commondir_then_run(*args, **kwargs):  # type: ignore[no-untyped-def]
+        # Simulates an attacker winning the race between the check and the Git process.
+        commondir = git_repository / ".git" / "commondir"
+        if not commondir.exists():
+            commondir.write_text("../elsewhere\n", encoding="utf-8")
+        return real_run(*args, **kwargs)
+
+    monkeypatch.setattr(handlers.subprocess, "run", plant_commondir_then_run)
+
+    text = _refusal_text(tmp_path, git_repository)
+    assert "commondir" in text or "changed" in text
+
+
+def test_git_dir_swapped_during_run_is_refused(
+    tmp_path: Path, git_repository: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mcp_toolbox.tools.git import handlers
+
+    outside = _outside_repository(tmp_path)
+    real_run = handlers.subprocess.run
+    git_dir = git_repository / ".git"
+
+    def swap_git_dir_then_run(*args, **kwargs):  # type: ignore[no-untyped-def]
+        # Replace .git with a different (outside-cloned) directory between check and exec.
+        if not (tmp_path / "moved-git").exists():
+            git_dir.rename(tmp_path / "moved-git")
+            shutil.copytree(outside / ".git", git_dir)
+        return real_run(*args, **kwargs)
+
+    monkeypatch.setattr(handlers.subprocess, "run", swap_git_dir_then_run)
+
+    text = _refusal_text(tmp_path, git_repository)
+    assert "outside-only" not in text
+    assert "changed" in text

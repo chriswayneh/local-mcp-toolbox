@@ -18,6 +18,17 @@ from mcp_toolbox.tools.common import bounded_response, require_bounded_limit
 
 _FIELD_SEPARATOR = "\x1f"
 _RECORD_SEPARATOR = "\x1e"
+# Entries Git reads from .git; a symlink at any of them could point outside the repository.
+_GIT_METADATA_ENTRIES = (
+    "objects",
+    "refs",
+    "HEAD",
+    "config",
+    "packed-refs",
+    "logs",
+    "info",
+    "worktrees",
+)
 _READ_ONLY = ToolAnnotations(
     read_only_hint=True,
     destructive_hint=False,
@@ -52,6 +63,7 @@ class GitRunner:
 
         git_dir = repository / ".git"
         _require_self_contained_git_dir(repository, git_dir)
+        before = _git_dir_fingerprint(git_dir)
         # Explicit --git-dir/--work-tree win over repo-local core.worktree, so Git can only
         # read the approved working tree.
         command = [
@@ -62,6 +74,11 @@ class GitRunner:
             f"--work-tree={repository}",
             *arguments,
         ]
+        # Re-check immediately before exec, then again after Git exits: if anything was planted
+        # or swapped while Git ran, its output is discarded instead of returned.
+        _require_self_contained_git_dir(repository, git_dir)
+        if _git_dir_fingerprint(git_dir) != before:
+            raise _git_dir_changed()
         try:
             # The command is assembled only from the resolved Git executable, approved repository,
             # and fixed read-only templates declared by this module.
@@ -89,6 +106,9 @@ class GitRunner:
                 remediation="Check the local Git installation and server permissions.",
             ) from error
 
+        _require_self_contained_git_dir(repository, git_dir)
+        if _git_dir_fingerprint(git_dir) != before:
+            raise _git_dir_changed()
         if completed.returncode != 0:
             raise ToolboxError(
                 ErrorCategory.RESOURCE_NOT_FOUND,
@@ -246,6 +266,27 @@ def _require_self_contained_git_dir(repository: Path, git_dir: Path) -> None:
             "The approved repository has no .git directory.",
             "Approve the top level of a Git working tree.",
         )
+    for name in _GIT_METADATA_ENTRIES:
+        if (git_dir / name).is_symlink():
+            raise _git_denial(
+                f"The approved repository's .git/{name} is a symlink, so Git could read it "
+                "from outside the repository.",
+                "Replace the symlink with the real directory or file.",
+            )
+    root = repository.resolve()
+    for name in ("objects", "refs"):
+        try:
+            resolved = (git_dir / name).resolve(strict=False)
+        except OSError as error:
+            raise _git_denial(
+                f"The approved repository's .git/{name} could not be resolved.",
+                "Check the repository's .git directory.",
+            ) from error
+        if not resolved.is_relative_to(root):
+            raise _git_denial(
+                f"The approved repository's .git/{name} resolves outside the repository.",
+                "Approve a self-contained repository.",
+            )
     commondir = git_dir / "commondir"
     if commondir.exists() or commondir.is_symlink():
         raise _git_denial(
@@ -253,8 +294,10 @@ def _require_self_contained_git_dir(repository: Path, git_dir: Path) -> None:
             "objects, and config from another directory.",
             "Approve the main working tree that owns the shared .git directory instead.",
         )
-    root = repository.resolve()
-    pending = [git_dir / "objects"]
+    initial_store = (git_dir / "objects").resolve(strict=False)
+    if not initial_store.is_relative_to(root):
+        raise _alternates_denial()
+    pending = [initial_store]
     seen: set[Path] = set()
     while pending:
         objects = pending.pop()
@@ -295,6 +338,31 @@ def _require_self_contained_git_dir(repository: Path, git_dir: Path) -> None:
                 raise _alternates_denial()
             # Alternates chain: the borrowed store may list alternates of its own.
             pending.append(resolved)
+
+
+def _git_dir_changed() -> ToolboxError:
+    return _git_denial(
+        "The approved repository's .git directory changed while it was being inspected.",
+        "Retry once nothing else is modifying the repository.",
+    )
+
+
+def _git_dir_fingerprint(git_dir: Path) -> tuple[object, ...]:
+    """Identify the .git directory, its object and ref stores, and their redirect files."""
+
+    parts: list[object] = []
+    for path in (git_dir, git_dir / "objects", git_dir / "refs"):
+        try:
+            info = os.lstat(path)
+            parts.append((info.st_dev, info.st_ino, info.st_mode))
+        except OSError:
+            parts.append(None)
+    for path in (git_dir / "commondir", git_dir / "objects" / "info" / "alternates"):
+        try:
+            parts.append(path.read_bytes())
+        except OSError:
+            parts.append(None)
+    return tuple(parts)
 
 
 def _alternates_denial() -> ToolboxError:
