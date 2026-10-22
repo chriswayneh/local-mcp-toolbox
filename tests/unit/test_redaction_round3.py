@@ -98,6 +98,9 @@ def test_bypass_is_not_a_pass_key() -> None:
         "<password>" * 6000,
         "password=" + "[REDACTED_X] " * 5000 + "z",
     ],
+    # Keep test ids short: pytest puts the id in PYTEST_CURRENT_TEST, and Windows caps an
+    # environment variable at 32767 characters.
+    ids=lambda raw: f"{raw[:12]!r}x{len(raw)}",
 )
 def test_pathological_lines_redact_in_linear_time(raw: str) -> None:
     started = time.perf_counter()
