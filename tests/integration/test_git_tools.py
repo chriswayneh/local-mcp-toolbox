@@ -368,3 +368,91 @@ def test_filter_driver_with_equals_in_name_never_runs_probe(
 
     asyncio.run(scenario())
     assert not marker.exists(), '[filter "a=b"] executed probe through MCP tool'
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32" or shutil.which("sh") is None,
+    reason="POSIX shell probe; Git for Windows cannot run it as a filter",
+)
+@pytest.mark.parametrize("bad_driver", ["foo\x1ebar", "foo\u2028bar", "a.clean\x1efilter.b"])
+def test_filter_driver_with_line_separator_in_name_is_refused_and_never_runs_probe(
+    bad_driver: str, tmp_path: Path, git_repository: Path
+) -> None:
+    from mcp_toolbox.models import ErrorCategory, ToolboxError
+    from mcp_toolbox.tools.git.handlers import GitRunner
+
+    marker = tmp_path / "sep-filter-ran"
+    probe = _write_probe(tmp_path, marker)
+    config_path = git_repository / ".git" / "config"
+    config_path.write_bytes(
+        config_path.read_bytes() + f'\n[filter "{bad_driver}"]\n\tclean = {probe}\n'.encode()
+    )
+    (git_repository / ".gitattributes").write_bytes(f"*.md filter={bad_driver}\n".encode())
+    readme = git_repository / "README.md"
+    readme.write_text("Initial CONTENX\n", encoding="utf-8")
+    stat = readme.stat()
+    os.utime(readme, (stat.st_atime + 10, stat.st_mtime + 10))
+
+    runtime = build_runtime(
+        ToolboxSettings(
+            profile=PermissionProfile.STANDARD,
+            filesystem=FilesystemSettings(approved_roots=[tmp_path]),
+            integrations=IntegrationSettings(git=True),
+            git=GitSettings(approved_repositories=[git_repository]),
+            audit=AuditSettings(path=tmp_path / "audit" / "events.jsonl"),
+        )
+    )
+    with pytest.raises(ToolboxError) as caught:
+        GitRunner(runtime).run(git_repository, ["status", "--porcelain=v1"])
+    assert caught.value.category is ErrorCategory.PERMISSION_DENIED
+    assert not marker.exists(), f"filter driver {bad_driver!r} executed probe"
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32" or shutil.which("sh") is None,
+    reason="POSIX shell probe; Git for Windows cannot run it as an uploadpack/ssh helper",
+)
+def test_promisor_partial_clone_never_runs_lazy_fetch_helpers(
+    tmp_path: Path, git_repository: Path
+) -> None:
+    marker = tmp_path / "promisor-ran"
+    probe = tmp_path / "promisor-probe.sh"
+    probe.write_text(f"#!/bin/sh\necho ran >> '{marker}'\nexit 1\n", encoding="utf-8")
+    probe.chmod(0o755)
+    pack_dir = git_repository / ".git" / "objects" / "pack"
+    pack_dir.mkdir(parents=True, exist_ok=True)
+    (pack_dir / f"pack-{'1' * 40}.promisor").write_bytes(b"")
+    (git_repository / ".git" / "refs" / "heads" / "main").write_text(
+        f"{'2' * 40}\n", encoding="utf-8"
+    )
+    (git_repository / ".git" / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    _git(git_repository, "config", "core.repositoryformatversion", "1")
+    _git(git_repository, "config", "extensions.partialclone", "origin")
+    _git(git_repository, "config", "remote.origin.url", str(tmp_path))
+    _git(git_repository, "config", "remote.origin.promisor", "true")
+    _git(git_repository, "config", "remote.origin.uploadpack", str(probe))
+    _git(git_repository, "config", "core.sshCommand", str(probe))
+
+    # Sanity check: plain `git log` in this repo triggers a promisor lazy fetch and runs probe.
+    subprocess.run(
+        ["git", "-C", str(git_repository), "log", "-1"],
+        check=False,
+        capture_output=True,
+    )
+    assert marker.exists(), "fixture did not make plain git log run the promisor helper"
+    marker.unlink()
+
+    server = _git_server(tmp_path, git_repository)
+
+    async def scenario() -> None:
+        async with Client(server) as client:  # type: ignore[arg-type]
+            for tool in (
+                "git_recent_commits",
+                "git_repository_status",
+                "git_diff_summary",
+                "git_current_branch",
+            ):
+                await client.call_tool(tool, {"repository": str(git_repository)})
+
+    asyncio.run(scenario())
+    assert not marker.exists(), "Git tool triggered a partial-clone promisor lazy fetch"

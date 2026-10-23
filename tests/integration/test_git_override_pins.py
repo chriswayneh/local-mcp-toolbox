@@ -101,6 +101,11 @@ def _call_all_tools(tmp_path: Path, repository: Path) -> None:
         "status.submoduleSummary=false",
         "log.showSignature=false",
         "diff.ignoreSubmodules=dirty",
+        "protocol.allow=never",
+        "core.sshCommand=false",
+        "core.askPass=false",
+        "core.alternateRefsCommand=false",
+        "credential.helper=",
     ],
 )
 def test_every_git_command_carries_the_fixed_override(
@@ -122,6 +127,8 @@ def test_tool_templates_pin_their_safety_flags(
     for flag in ("--numstat", "--no-ext-diff", "--no-textconv", "--ignore-submodules=dirty"):
         assert flag in by_verb["diff"], flag
     assert "--no-show-signature" in by_verb["log"]
+    for verb_argv in by_verb.values():
+        assert "--no-lazy-fetch" in verb_argv
 
 
 def test_environment_disables_optional_locks_and_user_config(
@@ -130,6 +137,9 @@ def test_environment_disables_optional_locks_and_user_config(
     _call_all_tools(tmp_path, repo)
     for call in calls:
         assert call["env"]["GIT_OPTIONAL_LOCKS"] == "0"
+        assert call["env"]["GIT_NO_LAZY_FETCH"] == "1"
+        assert call["env"]["GIT_ASKPASS"] == "false"
+        assert call["env"]["SSH_ASKPASS"] == "false"
         assert call["env"]["GIT_CONFIG_NOSYSTEM"] == "1"
         assert call["env"]["GIT_CONFIG_GLOBAL"] == os.devnull
 
@@ -214,6 +224,16 @@ def test_git_start_oserror_becomes_a_safe_error(monkeypatch, tmp_path: Path, rep
         "filter.a\tb.clean\n",
         "filter.a\x00b.clean\n",
         "filter.a\x7fb.clean\n",
+        "filter.foo\x1ebar.clean\n",
+        "filter.foo\u2028bar.clean\n",
+        "filter.foo\u2029bar.clean\n",
+        "filter.foo\x85bar.clean\n",
+        "filter.foo\x0bbar.clean\n",
+        "filter.foo\x0cbar.clean\n",
+        "filter.foo\x1cbar.clean\n",
+        "filter.foo\x1dbar.clean\n",
+        "filter.a.clean\x1efilter.b.clean\n",
+        "filter.a.clean\rfilter.b.clean\n",
         "filter..clean\n",
     ],
 )

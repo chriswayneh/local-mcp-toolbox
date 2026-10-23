@@ -31,6 +31,12 @@ _SAFE_CONFIG_OVERRIDES = (
     # Never descend into submodule work trees: a submodule's own config (filters, fsmonitor,
     # hooks) is invisible to the parent-level overrides above.
     "diff.ignoreSubmodules=dirty",
+    # Block partial-clone promisor lazy fetches, alternate-ref helpers, and credential/SSH helpers.
+    "protocol.allow=never",
+    "core.sshCommand=false",
+    "core.askPass=false",
+    "core.alternateRefsCommand=false",
+    "credential.helper=",
 )
 _READ_ONLY = ToolAnnotations(
     read_only_hint=True,
@@ -68,7 +74,7 @@ class GitRunner:
             *_safe_config_arguments(),
             *_filter_driver_overrides(executable, repository, self._runtime),
         ]
-        command = [executable, *overrides, "-C", str(repository), *arguments]
+        command = [executable, "--no-lazy-fetch", *overrides, "-C", str(repository), *arguments]
         try:
             # The command is assembled only from the resolved Git executable, approved repository,
             # and fixed read-only templates declared by this module.
@@ -255,6 +261,7 @@ def _filter_driver_overrides(
         completed = subprocess.run(  # noqa: S603  # nosec B603
             [
                 executable,
+                "--no-lazy-fetch",
                 "-C",
                 str(repository),
                 "config",
@@ -284,8 +291,10 @@ def _filter_driver_overrides(
             remediation="Repair the repository's .git/config before inspecting it.",
         )
     drivers: set[str] = set()
-    for raw_name in completed.stdout.splitlines():
-        line = raw_name.strip("\r\n")
+    for raw_name in completed.stdout.split("\n"):
+        line = raw_name[:-1] if raw_name.endswith("\r") else raw_name
+        if not line:
+            continue
         if line.lower().startswith("filter.") and line.count(".") >= 2:
             driver = line[len("filter.") : line.rindex(".")]
             if _is_unsafe_filter_driver_name(driver):
@@ -307,10 +316,13 @@ def _filter_driver_overrides(
 
 
 def _is_unsafe_filter_driver_name(driver: str) -> bool:
-    """Return True when a filter driver name is empty or contains '=' or control characters."""
+    """Return True when a filter driver name is empty or contains '=' or non-printable chars."""
 
     return (
-        not driver or "=" in driver or any(ord(char) < 0x20 or ord(char) == 0x7F for char in driver)
+        not driver
+        or "=" in driver
+        or not driver.isprintable()
+        or any(ord(char) < 0x20 or ord(char) == 0x7F for char in driver)
     )
 
 
@@ -347,6 +359,9 @@ def _safe_git_environment(overrides: Sequence[str] = ()) -> dict[str, str]:
     environment["GIT_CONFIG_GLOBAL"] = os.devnull
     # Stop `git status` from refreshing the index or taking index.lock in the repository.
     environment["GIT_OPTIONAL_LOCKS"] = "0"
+    environment["GIT_NO_LAZY_FETCH"] = "1"
+    environment["GIT_ASKPASS"] = "false"
+    environment["SSH_ASKPASS"] = "false"
     pairs = _config_override_pairs(overrides)
     environment["GIT_CONFIG_COUNT"] = str(len(pairs))
     for index, (key, value) in enumerate(pairs):
