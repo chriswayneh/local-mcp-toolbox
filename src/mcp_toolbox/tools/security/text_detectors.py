@@ -222,7 +222,7 @@ _WEBHOOK_DOMAINS = "|".join(
 )
 _EXFIL_WEBHOOK_OR_UPLOAD_RE = re.compile(
     rf"(?i)(?:"
-    rf"\b(?:[a-z0-9-]+\.)?(?:{_WEBHOOK_DOMAINS})\b"
+    rf"\b(?:{_WEBHOOK_DOMAINS})\b"
     rf"|\bcu" + r"rl\b[^\r\n]{0,300}?(?:(?:-d|--data|--data-binary|--data-raw|--data-urlencode)\s+"
     r"['\"]?@[^\s'\"]+|(?:-F|--form)\s+['\"]?[^=\s'\"]+=@[^\s'\"]+|--upload-file\s+\S+)"
     r"|\bwg" + r"et\b[^\r\n]{0,300}?--post-file(?:=|\s+)\S+"
@@ -251,7 +251,7 @@ def scan_unicode_smuggling(
                 if code not in bidi_codes:
                     bidi_codes.append(code)
             elif cp in TAG_CODEPOINTS:
-                code = f"U+{cp:05X}"
+                code = f"U+{cp:04X}" if cp <= 0xFFFF else f"U+{cp:05X}"
                 if code not in tag_codes:
                     tag_codes.append(code)
             elif cp in ZERO_WIDTH_CODEPOINTS:
@@ -299,7 +299,10 @@ def scan_unicode_smuggling(
                         f"Line contains invisible Unicode tag or variation-selector codepoints "
                         f"({', '.join(tag_codes[:5])}) that can smuggle hidden tokens to a model."
                     ),
-                    remediation="Strip all U+E0000..U+E01EF codepoints from the file before use.",
+                    remediation=(
+                        "Strip all U+FE00..U+FE0F and U+E0000..U+E01EF codepoints from the file "
+                        "before use."
+                    ),
                     snippet=format_safe_snippet(line, context),
                 )
             )
@@ -358,15 +361,27 @@ def _logical_lines_with_numbers(lines: Sequence[str]) -> list[tuple[int, str, st
             raw_parts = [raw_line.rstrip()]
             end_idx = idx + 1
             while end_idx < total:
-                next_norm = strip_invisible_for_matching(lines[end_idx])
-                raw_parts.append(lines[end_idx].strip())
+                next_raw = lines[end_idx]
+                next_norm = strip_invisible_for_matching(next_raw)
+                entries.append((end_idx + 1, next_raw, next_norm))
+                raw_parts.append(next_raw.strip())
                 if next_norm.rstrip().endswith("\\") and end_idx + 1 < total:
                     parts.append(next_norm.rstrip()[:-1])
                     end_idx += 1
                 else:
                     parts.append(next_norm)
                     break
-            entries.append((start_line, " ".join(raw_parts), " ".join(parts)))
+            joined_raw = " ".join(raw_parts)
+            spaced_norm = " ".join(parts)
+            spliced_norm = "".join(parts)
+            trimmed_spliced_norm = "".join(
+                part.lstrip() if part_idx > 0 else part for part_idx, part in enumerate(parts)
+            )
+            entries.append((start_line, joined_raw, spaced_norm))
+            if spliced_norm != spaced_norm:
+                entries.append((start_line, joined_raw, spliced_norm))
+            if trimmed_spliced_norm not in {spaced_norm, spliced_norm}:
+                entries.append((start_line, joined_raw, trimmed_spliced_norm))
             idx = end_idx + 1
         else:
             idx += 1

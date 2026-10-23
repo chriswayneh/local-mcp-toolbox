@@ -12,7 +12,7 @@ from mcp_toolbox.models import ErrorCategory, ToolboxError
 from mcp_toolbox.redaction import Redactor
 from mcp_toolbox.tools.security.mcp_config_detector import (
     AuditContext,
-    escape_control_and_invisible,
+    bound_escaped_text,
     scan_mcp_config_json,
 )
 from mcp_toolbox.tools.security.models import (
@@ -35,7 +35,9 @@ from mcp_toolbox.tools.security.models import (
 )
 from mcp_toolbox.tools.security.safe_reader import (
     read_safe_candidate,
+    reject_cli_target_links,
     reject_link_or_junction_chain,
+    walk_safe_directory,
 )
 from mcp_toolbox.tools.security.text_detectors import (
     scan_text_rules,
@@ -47,6 +49,18 @@ if TYPE_CHECKING:
 
     from mcp_toolbox.permissions.service import FilesystemAuthorizer
     from mcp_toolbox.server.runtime import ServerRuntime
+
+_MAX_SAFE_REL_PATH_CHARS = 960
+
+
+def _matches_target_filter(
+    rel_posix: str,
+    filename: str,
+    validated_globs: tuple[str, ...] | None,
+) -> bool:
+    if validated_globs is not None:
+        return matches_any_glob(rel_posix, filename, validated_globs)
+    return is_default_agent_file(rel_posix)
 
 
 def _audit_single_file_content(
@@ -61,7 +75,7 @@ def _audit_single_file_content(
     if raw_lines and raw_lines[-1] == "":
         raw_lines = raw_lines[:-1]
     lines = [line[:-1] if line.endswith("\r") else line for line in raw_lines]
-    safe_rel_posix = escape_control_and_invisible(rel_posix)
+    safe_rel_posix = bound_escaped_text(rel_posix, _MAX_SAFE_REL_PATH_CHARS)
 
     scan_unicode_smuggling(safe_rel_posix, lines, raw_starts_with_bom, context)
     scan_text_rules(safe_rel_posix, text, lines, context)
@@ -138,14 +152,45 @@ def audit_agent_configs(
                 "Filesystem access was denied by the active policy.",
                 remediation="The requested path matches a blocked sensitive-file pattern.",
             )
-        if not authorizer.check_path(lexical).allowed:
+        try:
+            allowed = authorizer.check_path(lexical).allowed
+        except OSError as error:
+            raise ToolboxError(
+                ErrorCategory.PERMISSION_DENIED,
+                "Filesystem access was denied by the active policy.",
+                remediation="Use an accessible regular directory or file path.",
+            ) from error
+        if not allowed:
             raise ToolboxError(
                 ErrorCategory.PERMISSION_DENIED,
                 "Filesystem access was denied by the active policy.",
                 remediation="Use an approved path that does not match a blocked pattern.",
             )
         reject_link_or_junction_chain(matching_root, lexical)
-        target_lstat = lexical.lstat()
+        try:
+            target_lstat = lexical.lstat()
+            is_link = stat.S_ISLNK(target_lstat.st_mode)
+            is_junction = lexical.is_junction() if hasattr(lexical, "is_junction") else False
+        except FileNotFoundError as error:
+            raise ToolboxError(
+                ErrorCategory.RESOURCE_NOT_FOUND,
+                "The requested agent configuration path was not found.",
+                remediation="Pass an existing directory or regular file path.",
+            ) from error
+        except OSError as error:
+            raise ToolboxError(
+                ErrorCategory.PERMISSION_DENIED,
+                "Filesystem access was denied by the active policy.",
+                remediation="Use an accessible regular directory or file path.",
+            ) from error
+        if is_link or is_junction:
+            raise ToolboxError(
+                ErrorCategory.PERMISSION_DENIED,
+                "Symbolic links and junctions are not permitted for the target path.",
+                remediation="Pass a canonical regular directory or file path.",
+            )
+        anchor_root = matching_root
+        prefix_parts = rel_to_root.parts
     else:
         if ".." in target_path.parts:
             raise ToolboxError(
@@ -154,28 +199,9 @@ def audit_agent_configs(
                 remediation="Pass a direct path to the target file or directory.",
             )
         lexical = Path(os.path.abspath(target_path))
-        try:
-            target_lstat = lexical.lstat()
-        except FileNotFoundError as error:
-            raise ToolboxError(
-                ErrorCategory.RESOURCE_NOT_FOUND,
-                "The requested target path was not found.",
-                remediation="Pass an existing directory or regular file path.",
-            ) from error
-        except OSError as error:
-            raise ToolboxError(
-                ErrorCategory.PERMISSION_DENIED,
-                "The requested target path could not be accessed.",
-                remediation="Check filesystem permissions for the target path.",
-            ) from error
-        is_link = stat.S_ISLNK(target_lstat.st_mode)
-        is_junction = lexical.is_junction() if hasattr(lexical, "is_junction") else False
-        if is_link or is_junction:
-            raise ToolboxError(
-                ErrorCategory.PERMISSION_DENIED,
-                "Target path cannot be a symbolic link or junction.",
-                remediation="Pass a canonical regular directory or file path.",
-            )
+        target_lstat = reject_cli_target_links(target_path, lexical)
+        anchor_root = lexical.parent if stat.S_ISREG(target_lstat.st_mode) else lexical
+        prefix_parts = (lexical.name,) if stat.S_ISREG(target_lstat.st_mode) else ()
 
     context = AuditContext(redactor=redactor or Redactor())
     scanned_files: list[str] = []
@@ -192,12 +218,11 @@ def audit_agent_configs(
                 "The target file matches a blocked sensitive-file pattern.",
                 remediation="Pass an agent instruction, skill, prompt, or MCP configuration file.",
             )
-        parent_root = lexical.parent.resolve(strict=True)
         files_discovered = 1
         budget = min(max_file_bytes, MAX_TOTAL_SCAN_BYTES)
         payload, over_budget = read_safe_candidate(
-            parent_root,
-            (lexical.name,),
+            anchor_root,
+            prefix_parts,
             budget,
             max_file_bytes,
             effective_blocked,
@@ -216,54 +241,34 @@ def audit_agent_configs(
                 remediation="Confirm the target is a readable single-link regular file.",
             )
         rel_posix = lexical.name
-        scanned_files.append(escape_control_and_invisible(rel_posix))
+        scanned_files.append(bound_escaped_text(rel_posix, _MAX_SAFE_REL_PATH_CHARS))
         _audit_single_file_content(rel_posix, payload, True, context)
 
     elif stat.S_ISDIR(target_lstat.st_mode):
         target_type = "directory"
-        scan_root = lexical.resolve(strict=True)
         candidate_rel_parts: list[tuple[str, ...]] = []
+        walked_entries, walk_withheld = walk_safe_directory(
+            anchor_root,
+            prefix_parts,
+            SKIPPED_DIRECTORIES,
+        )
+        withheld_files += walk_withheld
 
-        for current_dir, subdirectories, filenames in os.walk(scan_root, followlinks=False):
-            current_path = Path(current_dir)
-            try:
-                rel_dir = current_path.relative_to(scan_root)
-            except ValueError:
-                subdirectories[:] = []
-                continue
-
-            kept_subdirs: list[str] = []
-            for subdir in sorted(subdirectories):
-                if subdir in SKIPPED_DIRECTORIES or subdir.endswith(".egg"):
-                    continue
-                subdir_path = current_path / subdir
-                try:
-                    sub_st = subdir_path.lstat()
-                    is_sub_junction = (
-                        subdir_path.is_junction() if hasattr(subdir_path, "is_junction") else False
-                    )
-                except OSError:
+        for rel_dir_parts, regular_names, symlink_names in walked_entries:
+            matched_symlink_names: list[str] = []
+            for sym_name in symlink_names:
+                sym_parts = (*rel_dir_parts, sym_name) if rel_dir_parts else (sym_name,)
+                sym_posix = "/".join(sym_parts)
+                if _matches_target_filter(sym_posix, sym_name, validated_globs):
+                    matched_symlink_names.append(sym_name)
+                elif sym_name not in SKIPPED_DIRECTORIES and not sym_name.endswith(".egg"):
                     withheld_files += 1
-                    continue
-                if (
-                    stat.S_ISLNK(sub_st.st_mode)
-                    or is_sub_junction
-                    or not stat.S_ISDIR(sub_st.st_mode)
-                ):
-                    withheld_files += 1
-                    continue
-                kept_subdirs.append(subdir)
-            subdirectories[:] = kept_subdirs
 
-            for filename in sorted(filenames):
-                rel_parts = (*rel_dir.parts, filename) if rel_dir.parts else (filename,)
+            for filename in sorted([*regular_names, *matched_symlink_names]):
+                rel_parts = (*rel_dir_parts, filename) if rel_dir_parts else (filename,)
                 rel_posix = "/".join(rel_parts)
-                if validated_globs is not None:
-                    if not matches_any_glob(rel_posix, filename, validated_globs):
-                        continue
-                else:
-                    if not is_default_agent_file(rel_posix):
-                        continue
+                if not _matches_target_filter(rel_posix, filename, validated_globs):
+                    continue
                 files_discovered += 1
                 if len(candidate_rel_parts) >= max_files:
                     files_truncated = True
@@ -279,8 +284,8 @@ def audit_agent_configs(
                 continue
             budget = min(max_file_bytes, remaining_total)
             payload, over_budget = read_safe_candidate(
-                scan_root,
-                rel_parts,
+                anchor_root,
+                (*prefix_parts, *rel_parts),
                 budget,
                 max_file_bytes,
                 effective_blocked,
@@ -293,7 +298,7 @@ def audit_agent_configs(
                 continue
             total_bytes_read += len(payload)
             rel_posix = "/".join(rel_parts)
-            scanned_files.append(escape_control_and_invisible(rel_posix))
+            scanned_files.append(bound_escaped_text(rel_posix, _MAX_SAFE_REL_PATH_CHARS))
             _audit_single_file_content(
                 rel_posix,
                 payload,

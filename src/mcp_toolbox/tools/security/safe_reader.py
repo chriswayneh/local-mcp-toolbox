@@ -1,9 +1,10 @@
-"""Race-safe, symlink-safe file reading for agent configuration auditing."""
+"""Race-safe, symlink-safe file reading and directory walking for agent config auditing."""
 
 from __future__ import annotations
 
 import os
 import stat
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -18,6 +19,14 @@ USE_DIR_FD = (
     os.open in os.supports_dir_fd and hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY")
 )
 
+_DARWIN_SYSTEM_ROOT_NAMES = frozenset({"tmp", "var", "etc"})
+
+
+def _is_link_or_junction(candidate: Path, st: os.stat_result) -> bool:
+    is_link = stat.S_ISLNK(st.st_mode)
+    is_junction = candidate.is_junction() if hasattr(candidate, "is_junction") else False
+    return is_link or is_junction
+
 
 def reject_link_or_junction_chain(base: Path, target: Path) -> None:
     """Verify no path component from base to target is a symlink or Windows junction."""
@@ -31,8 +40,7 @@ def reject_link_or_junction_chain(base: Path, target: Path) -> None:
     for candidate in candidates:
         try:
             st = candidate.lstat()
-            is_link = stat.S_ISLNK(st.st_mode)
-            is_junction = candidate.is_junction() if hasattr(candidate, "is_junction") else False
+            bad = _is_link_or_junction(candidate, st)
         except FileNotFoundError as error:
             raise ToolboxError(
                 ErrorCategory.RESOURCE_NOT_FOUND,
@@ -45,12 +53,194 @@ def reject_link_or_junction_chain(base: Path, target: Path) -> None:
                 "Filesystem access was denied by the active policy.",
                 remediation="Use an accessible regular directory or file path.",
             ) from error
-        if is_link or is_junction:
+        if bad:
             raise ToolboxError(
                 ErrorCategory.PERMISSION_DENIED,
                 "Symbolic links and junctions are not permitted for the target path.",
                 remediation="Pass a canonical regular directory or file path.",
             )
+
+
+def reject_cli_target_links(target_path: Path, lexical: Path) -> os.stat_result:
+    """Verify a CLI target path and its ancestor components contain no symlinks or junctions."""
+
+    if not target_path.is_absolute():
+        try:
+            cwd_root = Path.cwd().resolve(strict=True)
+        except OSError as error:
+            raise ToolboxError(
+                ErrorCategory.PERMISSION_DENIED,
+                "The current working directory could not be accessed.",
+                remediation="Check filesystem permissions for the working directory.",
+            ) from error
+        reject_link_or_junction_chain(cwd_root, cwd_root.joinpath(*target_path.parts))
+
+    anchor = Path(lexical.anchor)
+    rel_parts = lexical.relative_to(anchor).parts
+    current = anchor
+    candidates = [anchor]
+    for part in rel_parts:
+        current = current / part
+        candidates.append(current)
+
+    last_stat: os.stat_result | None = None
+    for candidate in candidates:
+        try:
+            st = candidate.lstat()
+            bad = _is_link_or_junction(candidate, st)
+        except FileNotFoundError as error:
+            raise ToolboxError(
+                ErrorCategory.RESOURCE_NOT_FOUND,
+                "The requested target path was not found.",
+                remediation="Pass an existing directory or regular file path.",
+            ) from error
+        except OSError as error:
+            raise ToolboxError(
+                ErrorCategory.PERMISSION_DENIED,
+                "The requested target path could not be accessed.",
+                remediation="Check filesystem permissions for the target path.",
+            ) from error
+        if (
+            sys.platform == "darwin"
+            and candidate != lexical
+            and candidate.parent == anchor
+            and candidate.name in _DARWIN_SYSTEM_ROOT_NAMES
+        ):
+            last_stat = st
+            continue
+        if bad:
+            raise ToolboxError(
+                ErrorCategory.PERMISSION_DENIED,
+                "Target path cannot be a symbolic link or junction.",
+                remediation="Pass a canonical regular directory or file path.",
+            )
+        last_stat = st
+
+    if last_stat is None:
+        raise ToolboxError(
+            ErrorCategory.RESOURCE_NOT_FOUND,
+            "The requested target path was not found.",
+            remediation="Pass an existing directory or regular file path.",
+        )
+    return last_stat
+
+
+def open_anchored_dir_fd(root: Path, parts: tuple[str, ...]) -> int:
+    """Open root and step through each directory part with O_RDONLY | O_DIRECTORY | O_NOFOLLOW."""
+
+    cloexec = getattr(os, "O_CLOEXEC", 0)
+    dir_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | cloexec
+    directory = os.open(root, dir_flags)
+    try:
+        for part in parts:
+            child = os.open(part, dir_flags, dir_fd=directory)
+            os.close(directory)
+            directory = child
+    except BaseException:
+        os.close(directory)
+        raise
+    return directory
+
+
+def walk_safe_directory(
+    root: Path,
+    prefix_parts: tuple[str, ...],
+    skipped_directories: frozenset[str],
+) -> tuple[list[tuple[tuple[str, ...], list[str], list[str]]], int]:
+    """Walk a directory anchored at root/prefix_parts without following symlinks."""
+
+    if USE_DIR_FD:
+        cloexec = getattr(os, "O_CLOEXEC", 0)
+        dir_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | cloexec
+        try:
+            top_fd = open_anchored_dir_fd(root, prefix_parts)
+        except FileNotFoundError as error:
+            raise ToolboxError(
+                ErrorCategory.RESOURCE_NOT_FOUND,
+                "The requested agent configuration path was not found.",
+                remediation="Pass an existing directory or regular file path.",
+            ) from error
+        except OSError as error:
+            raise ToolboxError(
+                ErrorCategory.PERMISSION_DENIED,
+                "Filesystem access was denied by the active policy.",
+                remediation="Use an accessible regular directory or file path.",
+            ) from error
+
+        entries: list[tuple[tuple[str, ...], list[str], list[str]]] = []
+        withheld_count = 0
+
+        def _walk_fd(current_fd: int, rel_dir_parts: tuple[str, ...]) -> None:
+            nonlocal withheld_count
+            try:
+                names = sorted(os.listdir(current_fd))
+            except OSError:
+                withheld_count += 1
+                return
+            child_dirs: list[tuple[str, int]] = []
+            regular_names: list[str] = []
+            symlink_names: list[str] = []
+            for name in names:
+                try:
+                    st = os.stat(name, dir_fd=current_fd, follow_symlinks=False)
+                except OSError:
+                    withheld_count += 1
+                    continue
+                if stat.S_ISLNK(st.st_mode):
+                    symlink_names.append(name)
+                elif stat.S_ISDIR(st.st_mode):
+                    if name in skipped_directories or name.endswith(".egg"):
+                        continue
+                    try:
+                        child_fd = os.open(name, dir_flags, dir_fd=current_fd)
+                    except OSError:
+                        withheld_count += 1
+                        continue
+                    child_dirs.append((name, child_fd))
+                else:
+                    regular_names.append(name)
+            entries.append((rel_dir_parts, regular_names, symlink_names))
+            for sub_name, child_fd in child_dirs:
+                try:
+                    _walk_fd(child_fd, (*rel_dir_parts, sub_name))
+                finally:
+                    os.close(child_fd)
+
+        try:
+            _walk_fd(top_fd, ())
+        finally:
+            os.close(top_fd)
+        return entries, withheld_count
+
+    scan_root = root.joinpath(*prefix_parts)
+    reject_link_or_junction_chain(root, scan_root)
+    fallback_entries: list[tuple[tuple[str, ...], list[str], list[str]]] = []
+    fallback_withheld = 0
+    for current_dir, subdirectories, filenames in os.walk(scan_root, followlinks=False):
+        current_path = Path(current_dir)
+        try:
+            rel_dir = current_path.relative_to(scan_root)
+        except ValueError:
+            subdirectories[:] = []
+            continue
+        kept_subdirs: list[str] = []
+        for subdir in sorted(subdirectories):
+            if subdir in skipped_directories or subdir.endswith(".egg"):
+                continue
+            subdir_path = current_path / subdir
+            try:
+                sub_st = subdir_path.lstat()
+                bad_sub = _is_link_or_junction(subdir_path, sub_st)
+            except OSError:
+                fallback_withheld += 1
+                continue
+            if bad_sub or not stat.S_ISDIR(sub_st.st_mode):
+                fallback_withheld += 1
+                continue
+            kept_subdirs.append(subdir)
+        subdirectories[:] = kept_subdirs
+        fallback_entries.append((rel_dir.parts, sorted(filenames), []))
+    return fallback_entries, fallback_withheld
 
 
 def read_checked_fd(fd: int, budget: int, max_file_bytes: int) -> tuple[bytes | None, bool]:
@@ -84,13 +274,8 @@ def read_without_following(
     """POSIX: open each component relative to its parent descriptor with O_NOFOLLOW."""
 
     cloexec = getattr(os, "O_CLOEXEC", 0)
-    dir_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | cloexec
-    directory = os.open(root, dir_flags)
+    directory = open_anchored_dir_fd(root, parts[:-1])
     try:
-        for part in parts[:-1]:
-            child = os.open(part, dir_flags, dir_fd=directory)
-            os.close(directory)
-            directory = child
         file_flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | cloexec
         descriptor = os.open(parts[-1], file_flags, dir_fd=directory)
     finally:
@@ -156,9 +341,9 @@ def read_safe_candidate(
     if matches_blocked_parts(parts, blocked_patterns):
         return None, False
     candidate = root.joinpath(*parts)
-    if authorizer is not None and not authorizer.check_path(candidate).allowed:
-        return None, False
     try:
+        if authorizer is not None and not authorizer.check_path(candidate).allowed:
+            return None, False
         if USE_DIR_FD:
             return read_without_following(root, parts, budget, max_file_bytes)
         return read_resolved_fallback(
