@@ -84,6 +84,18 @@ There is no `exec`, `shell`, `terminal`, or `run_command` MCP tool. The shipped 
 
 Docker socket access is equivalent to high host privilege in many deployments. Containerized Docker inspection is opt-in; the shipped socket-proxy profile is recommended, while direct socket mounting is documented only as an advanced, high-risk configuration.
 
+Git inspection is pinned to the approved repository's own `.git` directory: explicit `--git-dir`/`--work-tree`, `GIT_CEILING_DIRECTORIES`, `GIT_COMMON_DIR`, and `GIT_OBJECT_DIRECTORY`, with `commondir`, outside alternates, `http-alternates`, gitdir files, non-regular files (such as FIFOs), and symlinks in `.git` metadata, refs, `objects/info`, `objects/pack`, or at any `objects/<entry>` (including in-repository alternate stores) refused. On Linux, Git reads the main object store and any in-repository alternate stores through private views bound to descriptors opened without following links, so swapping a directory for a symlink while Git runs cannot redirect it. Accepted residual risk:
+
+- **Hardlinked packs or loose objects.** A hard link is indistinguishable from the original file, so an attacker who can hardlink another repository's pack or object into the approved one can expose it. Hard links cannot cross filesystems and need write access to the target directory.
+
+### Git platform support
+
+**The Git tools run on Linux only.** On macOS and Windows every Git tool refuses with an `UNSUPPORTED_OPERATION` error that says so, and Git is never started.
+
+Why: on Linux, the toolbox opens the repository's object folders itself, without following symlinks, and hands Git those open folders. Someone who swaps a folder for a symlink while Git is running can't change what Git reads. macOS and Windows have no reliable way to do this. The only check there would compare the folders before and after Git runs, and a swap that is quickly undone can be missed. Data from another repository could then be returned, so the tools refuse instead of risking it.
+
+What to do: if you need the Git tools on a Mac or Windows machine, run the toolbox in the provided Linux container (`compose.yaml`) and approve the repository path inside it. Progress on native support is tracked in [issue #44](https://github.com/chriswayneh/local-mcp-toolbox/issues/44).
+
 GitHub inspection requires the GitHub integration, external-network access, and an exact case-insensitive `owner/repository` allowlist. Requests use `GET` only against the fixed `https://api.github.com` origin. Tokens are read from `GITHUB_TOKEN`, used only as an authorization header, and excluded from responses and audit records.
 
 Version 1.5 removed Kubernetes inspection after review showed that ambient kubeconfig credential providers can execute commands and persist refreshed credentials. It also removed generation capabilities because they do not meet a strict inspection-only definition. Neither surface is registered or configurable.

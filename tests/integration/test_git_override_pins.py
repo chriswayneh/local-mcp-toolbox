@@ -30,7 +30,10 @@ from mcp_toolbox.server import build_runtime, create_server
 from mcp_toolbox.tools.git import handlers
 from mcp_toolbox.tools.git.handlers import GitRunner
 
-pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="Git is not installed")
+pytestmark = pytest.mark.skipif(
+    not sys.platform.startswith("linux") or shutil.which("git") is None,
+    reason="Git tools are supported on Linux only",
+)
 
 
 def _git(repository: Path, *arguments: str) -> None:
