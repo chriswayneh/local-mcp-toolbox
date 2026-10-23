@@ -155,6 +155,8 @@ Log output is untrusted data and is redacted before it reaches the client or aud
 | `security_scanner_inventory` | None | Availability of a fixed scanner allowlist | Resolves availability only; it does not execute a scanner or disclose executable paths. |
 | `security_scan_repository` | Absolute approved `repository`, optional bounded `limit`, scanner fixed to `bandit` | Normalized Bandit findings without source-code excerpts | Requires explicit opt-in and a separate approved root. Copies the approved root's Bandit source files (`.py`/`.pyw`, skipping the directories Bandit skips) into a private temporary snapshot, then runs only `bandit -q -r <snapshot> -f json` there without a shell, with timeout/output limits and central redaction. On POSIX each path component is opened relative to its parent with `O_NOFOLLOW` (no symlinks are followed at all, so a swapped directory cannot redirect the read); on Windows, which lacks that, the file is resolved, checked, opened and verified to be the same file (a narrower but not fully closed race). Only single-link regular files are copied (FIFOs, devices and hard links are skipped), at most 5 MB each and 50 MB in total; skipped files are counted in `withheld_files` and `snapshot_truncated` is set when the total cap was hit. Neither its own name nor its target may match a blocked pattern. Findings for anything not in the snapshot are dropped and counted in `withheld_findings`. |
 
+| `security_audit_agent_configs` | Absolute approved `path` (directory or file), optional `include_globs`, optional bounded `limit`, optional bounded `max_files` | Structured findings across `hidden_unicode`, `prompt_override`, `dangerous_execution`, `credential_or_exfil`, and `mcp_config_risk`, plus severity/category counts and scan stats | Requires `security_scanners` opt-in and an approved `security` root. Static in-process inspection only; opens path components with `O_NOFOLLOW` and `O_NONBLOCK` on POSIX (and link-free resolve-and-verify on Windows), accepts only single-link regular files within `max_file_bytes`, skips blocked filenames, redacts secrets, and escapes invisible/control codepoints in snippets. |
+
 Enable the adapter only for the smallest scan root set:
 
 ```yaml
@@ -167,6 +169,8 @@ security:
 ```
 
 The current Version 1 adapter supports Bandit only. Inventory can report other local scanner availability, but no unlisted scanner can be invoked, no user-controlled scanner arguments are accepted, and no remediation or fix operation is registered.
+
+`security_audit_agent_configs` runs entirely in-process without starting a subprocess. When given a directory, it discovers common agent instruction, prompt, skill, and MCP configuration files (`SKILL.md`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `PROMPT.md`, `.cursorrules`, `.windsurfrules`, `.clinerules`, `.github/copilot-instructions.md`, `.github/instructions/*.md`, `.cursor/rules/*.md`, `.cursor/rules/*.mdc`, `skills/**/SKILL.md`, `prompts/**/*.md`, `.mcp.json`, `mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`, `claude_desktop_config.json`) or filters by `include_globs`. It can also be run directly from the CLI or CI via `local-mcp-toolbox audit-agent-configs <path> [--json] [--fail-on low|medium|high|none] [--include <glob>] [--max-files <n>] [--max-file-bytes <n>] [--limit <n>]`.
 
 ## Infrastructure
 
