@@ -172,3 +172,61 @@ def test_trailing_marker_trim_is_linear(raw: str) -> None:
     started = time.perf_counter()
     R.redact(raw)
     assert time.perf_counter() - started < 2.0
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "password='[REDACTED_X]''[REDACTED_X]':hunter22",
+        'password="[REDACTED_X]""[REDACTED_Y]":hunter22',
+        'password="[REDACTED_X]" "x": hunter22',
+        'password="[REDACTED_X]",""=hunter22',
+        'password="[REDACTED_X]", "x" = hunter22',
+        'api_key: "[REDACTED_X]" "k": hunter22',
+        '"password": "[REDACTED_X]", "[REDACTED_Y]": hunter22',
+        '"password": "", hunter22',
+        'password="[REDACTED_X]", "user": hunter22',
+    ],
+)
+def test_marker_followed_by_non_structural_text_is_redacted(raw: str) -> None:
+    assert "hunter22" not in R.redact(raw).text
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        '{"password": "[REDACTED_PASSWORD]", "user": "bob"}\r\nnext line',
+        "password=[REDACTED_PASSWORD]\r\nuser=bob",
+        'password="[REDACTED_PASSWORD]"\r\n',
+        '{"password": "[REDACTED_PASSWORD]",\r\n "user": "bob"}',
+        '[{"password": "[REDACTED_PASSWORD]"}, {"token": "[REDACTED_API_KEY]"}]',
+    ],
+    ids=["json-crlf", "kv-crlf", "quoted-crlf", "json-split-crlf", "json-array"],
+)
+def test_crlf_and_structural_json_are_not_over_redacted(raw: str) -> None:
+    result = R.redact(raw)
+    assert result.text == raw
+    assert result.redaction_count == 0
+
+
+@pytest.mark.parametrize("tag", ["authToken", "accessToken", "myApiKey", "AUTHTOKEN", "MYAPIKEY"])
+def test_xml_camel_and_caps_tags_are_redacted(tag: str) -> None:
+    out = R.redact(f"<{tag}>hunter22</{tag}>").text
+    assert "hunter22" not in out
+    assert out == f"<{tag}>[REDACTED_XML_SECRET]</{tag}>"
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "<tokens>3</tokens>",
+        "<monkey>1</monkey>",
+        "<MAXTOKENS>4096</MAXTOKENS>",
+        "<maxTokens>4096</maxTokens>",
+        "MAXTOKENS=4096",
+        "maxTokens: 4096",
+        "NUMTOKENS=3",
+    ],
+)
+def test_benign_xml_tags_and_token_counts_are_not_redacted(raw: str) -> None:
+    assert R.redact(raw).text == raw

@@ -28,14 +28,27 @@ class _Rule:
 
 # An exact redaction marker is already safe only when nothing but delimiters follows it on
 # the line (``password=[REDACTED_X] realsecret`` still leaks ``realsecret``).
-_MARKER_AHEAD = r"(?:\[REDACTED_[A-Z_]+\]['\"]?[ \t,;}\]]*)+$"
+_MARKER_AHEAD = r"(?:\[REDACTED_[A-Z_]+\]['\"]?[ \t,;}\]]*)+\r?$"
 # After a closing quote, the next non-blank character must end the value (or the line).
-_QUOTE_END = r"(?=[ \t]*(?:[,;}\]):]|$))"
-# A quoted marker counts as already redacted only when the rest of the line is structural:
-# closing brackets/separators up to end of line, or a separator then another quoted key
-# (JSON ``"[REDACTED_X]", "user": ...``). ``"[REDACTED_X]", hunter22`` is not skipped.
-_STRUCTURAL_REST = r"(?=[ \t]*(?:[,;}\])][ \t]*)*(?:$|['\"][^'\"\r\n]*['\"][ \t]*[:=]))"
-_QUOTED_MARKER = r"(?P<mq>['\"])\[REDACTED_[A-Z_]+\](?P=mq)" + _STRUCTURAL_REST
+_QUOTE_END = r"(?=[ \t]*(?:[,;}\]):]|\r?$))"
+# Rest of line is only closing brackets/separators (``\r`` allowed before the newline).
+_CLOSERS_TO_EOL = r"[ \t,;}\])]*\r?$"
+# A quoted, non-empty key that is not itself shaped like a marker, followed by ``:``.
+_NEXT_KEY = r"(?:\"(?!\[REDACTED_)[^\"\r\n]+\"|'(?!\[REDACTED_)[^'\r\n]+')[ \t]*:"
+# After a ``k: "[REDACTED_X]"`` marker: closers to end of line, or ``,``/``;`` and the next key.
+_STRUCTURAL_COLON = (
+    r"(?=" + _CLOSERS_TO_EOL + r"|[ \t}\])]*[,;][ \t]*(?:[{\[][ \t]*)*" + _NEXT_KEY + r")"
+)
+# After a ``k="[REDACTED_X]"`` marker only closers/separators may follow.
+_STRUCTURAL_EQUALS = r"(?=" + _CLOSERS_TO_EOL + r")"
+_QUOTED_MARKER = (
+    r"(?P<mq>['\"])\[REDACTED_[A-Z_]+\](?P=mq)"
+    + r"(?(colon)"
+    + _STRUCTURAL_COLON
+    + r"|"
+    + _STRUCTURAL_EQUALS
+    + r")"
+)
 
 
 _TRAILING_DELIMITERS = " \t,;}]'\""
@@ -50,7 +63,7 @@ def _trim_trailing_markers(text: str, start: int, end: int) -> int:
     whitespace that separates it from what follows. Runs in linear time on long lines.
     """
 
-    while end > start and text[end - 1] in " \t":
+    while end > start and text[end - 1] in " \t\r":
         end -= 1
     probe = end
     while probe > start:
@@ -64,7 +77,7 @@ def _trim_trailing_markers(text: str, start: int, end: int) -> int:
             if opening >= start and _MARKER_BODY.fullmatch(text, opening, probe):
                 # Drop the marker and anything blank before it; keep scanning left.
                 end = opening
-                while end > start and text[end - 1] in " \t":
+                while end > start and text[end - 1] in " \t\r":
                     end -= 1
                 probe = end
                 continue
@@ -90,7 +103,7 @@ def _keyed_rules(category: str, key: str) -> tuple[_Rule, _Rule]:
             # Only `key: "value"` (JSON, YAML, dict reprs). With `key=` an opening quote
             # proves nothing about where the value ends, so the unquoted rule takes the line.
             rf"(?im){key}['\"]?[ \t]*:[ \t]*" + r"(?P<quote>['\"])"
-            r"(?!\[REDACTED_[A-Z_]+\](?P=quote)" + _STRUCTURAL_REST + r")"
+            r"(?!\[REDACTED_[A-Z_]+\](?P=quote)" + _STRUCTURAL_COLON + r")"
             r"(?P<secret>(?:\\[^\r\n]|(?P=quote)(?P=quote)|(?!(?P=quote))[^\\\r\n])+)"
             # The closing quote must end the value; otherwise the unquoted rule takes the line.
             r"(?P=quote)" + _QUOTE_END
@@ -103,7 +116,7 @@ def _keyed_rules(category: str, key: str) -> tuple[_Rule, _Rule]:
             # An empty quoted JSON/YAML value (``"k": ""``) holds nothing to leak; keep its
             # quotes and the line. After ``=`` the quotes may be the secret itself.
             + r"(?(colon)(?!(?:\"\"|'')"
-            + _QUOTE_END
+            + _STRUCTURAL_COLON
             + r"))"
             + r"(?!['\"]?"
             + _MARKER_AHEAD
@@ -166,7 +179,10 @@ class Redactor:
             "XML_SECRET",
             re.compile(
                 r"(?i)<(?P<tag>(?:[a-z0-9_.-]*[-_.:])?(?:password|passwd|pwd|pass|secret|token"
-                r"|api[-_]?key|private[-_]?key|credentials?)|[a-z0-9_.-]*(?:password|secret))"
+                r"|api[-_]?key|private[-_]?key|credentials?)|[a-z0-9_.-]*(?:password|secret)"
+                # Case-sensitive, matching the key=value rules: authToken, myApiKey, AUTHTOKEN.
+                r"|(?-i:(?:[A-Za-z0-9_.-]*[-_.:])?(?:[A-Z0-9]+(?:TOKEN|APIKEY)"
+                r"|[A-Za-z0-9_.-]*[a-z0-9](?:Token|ApiKey))))"
                 r"(?:\s[^<>]*)?>(?!\[REDACTED_[A-Z_]+\]</)(?P<secret>[^<]+)</(?P=tag)>"
             ),
         ),
@@ -181,12 +197,12 @@ class Redactor:
         # All-caps keys with no separator, such as AUTHTOKEN or MYAPIKEY.
         *_keyed_rules(
             "API_KEY",
-            r"(?-i:(?<![A-Za-z0-9_.-])[A-Z0-9]+(?:TOKEN|APIKEY)S?(?![A-Za-z0-9_.-]))",
+            r"(?-i:(?<![A-Za-z0-9_.-])[A-Z0-9]+(?:TOKEN|APIKEY)(?![A-Za-z0-9_.-]))",
         ),
         # camelCase keys such as authToken, accessToken, refreshToken, idToken, myApiKey.
         *_keyed_rules(
             "API_KEY",
-            r"(?-i:(?<![A-Za-z0-9_.-])(?=[A-Za-z0-9_.-]*?[a-z0-9](?:Token|ApiKey)s?"
+            r"(?-i:(?<![A-Za-z0-9_.-])(?=[A-Za-z0-9_.-]*?[a-z0-9](?:Token|ApiKey)"
             r"(?![A-Za-z0-9_.-]))[A-Za-z0-9_.-]++)",
         ),
         _Rule(
