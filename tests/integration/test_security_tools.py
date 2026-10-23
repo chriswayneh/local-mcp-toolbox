@@ -79,7 +79,7 @@ def test_security_scan_returns_normalized_redacted_findings(tmp_path: Path, monk
             assert finding["file"] == "src/settings.py"
             assert finding["finding_id"] == "B105"
             assert "ghp_123456789012345678901234567890" not in str(result.structured_content)
-            assert "[REDACTED_PASSWORD]" in str(result.structured_content)
+            assert "[REDACTED_GITHUB_TOKEN]" in str(result.structured_content)
             assert unsupported.is_error is True
             assert denied.is_error is True
 

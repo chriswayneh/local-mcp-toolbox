@@ -14,6 +14,51 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
   and `mcp_config_risk`.
 - Add synthetic benign and risky agent configuration fixtures under
   `demo/agent-configs/`.
+- Passwords written as JSON, such as `"password": "hunter2"`, are now redacted.
+  Before, the password rule only matched `password=...` or `password: ...`, so
+  quoted JSON keys slipped through. Also, in structured data, any text value
+  under a secret-named key (`password`, `secret`, `token`, `api_key`, and
+  similar) is now replaced with `[REDACTED_SENSITIVE_FIELD]` even when the value
+  does not look like a known secret format.
+- That secret-named-key rule now replaces the whole value even when another
+  pattern already redacted part of it (for example a home path followed by the
+  real secret), and only an exact marker such as `[REDACTED_PASSWORD]` counts as
+  already redacted; a value that merely starts with `[REDACTED_` is redacted.
+- Quoted passwords are redacted up to the closing quote, so short passwords and
+  ones containing spaces, commas, braces, or escaped quotes no longer leak in
+  part or in full. Unquoted `password=...` values keep their full previous
+  coverage, and a value an earlier rule already replaced is not counted twice.
+- Keyed secrets (`password`/`pwd`, `*secret*`, `*token`, `*api_key`) have no
+  minimum length any more, so 1-3 character values are redacted. Unquoted
+  values are redacted to the end of the line (or up to an existing redaction
+  marker), so values with spaces or punctuation cannot leak their tail; quoted
+  values honor YAML's doubled-quote escape. Only an exact marker followed by a
+  delimiter is skipped; `[REDACTED_X]realsecret` is redacted. URL passwords
+  containing a space are redacted too.
+- A list or mapping stored under a secret-named key is now replaced as a whole
+  (before, `{"secret": ["a", "b"]}` passed through). Plain-text `privateKey`,
+  `credentials`, `pass`, and XML elements such as `<password>...</password>` are
+  redacted. An empty `"password": ""` is left intact instead of swallowing the
+  rest of the line, and name-like keys such as `tokenizer` or `private_key_path`
+  keep their values.
+- Text after an existing redaction marker on the same line is now redacted
+  (`password=[REDACTED_X] realsecret`), as are values glued to empty quotes
+  (`password=''hunter2`); only an exact `"k": ""` is kept. camelCase keys such
+  as `authToken`, `accessToken`, `refreshToken`, `idToken`, and `myApiKey`,
+  prefixed keys such as `client_credentials` and `user_pass`, and XML elements
+  with attributes, prefixes, suffixes, camelCase, or all-caps names
+  (`<password type="x">`, `<db_password>`, `<secretKey>`, `<SECRETKEY>`,
+  `<userPasswd>`, `<userPwd>`, `<authToken>`, `<AUTHTOKEN>`, `<MYAPIKEY>`) are
+  redacted, as are all-caps keys without a separator (`AUTHTOKEN`, `MYAPIKEY`;
+  plural count settings such as `MAXTOKENS=4096` are left alone). A quoted
+  marker or empty quoted value is treated as already safe only when the rest of
+  the line is closing brackets or trailing commas (or, when the secret key
+  itself is quoted before `:`, when `,` precedes a quoted identifier key and
+  structured value start, with CRLF lines supported), so
+  `password="[REDACTED_X]", hunter22`, `password: "[REDACTED_X]", "a": hunter22`,
+  and `password='[REDACTED_X]''[REDACTED_X]':hunter22` are redacted.
+  Pathological long lines no longer take seconds to redact (several patterns,
+  the XML tag rule, and the trailing-marker trim were made linear).
 - `security_scan_repository` no longer reports findings for files outside the
   approved scan root or files that match a blocked pattern. Bandit follows
   symlinks on its own, so a link inside the root could pull in a file from
@@ -34,6 +79,43 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
   and hard-linked files are skipped (a FIFO no longer hangs the scan), files
   over 5 MB or past a 50 MB total are withheld, and the response reports
   `withheld_files` and `snapshot_truncated`.
+- Git tools no longer run programs that a repository's own settings ask for.
+  A repository could set `core.fsmonitor`, hooks, an external diff tool, or a `.gitattributes` filter
+  driver (`filter.*.clean`/`process`) in
+  `.git/config`, and Git would run that program during a status check. The
+  toolbox now passes `--no-lazy-fetch`, sets `GIT_NO_LAZY_FETCH=1`,
+  `GIT_ASKPASS=false`, and `SSH_ASKPASS=false`, overrides those settings
+  (including `protocol.allow=never`, `core.sshCommand=false`,
+  `core.askPass=false`, `core.alternateRefsCommand=false`, and
+  `credential.helper=`) via `-c` and `GIT_CONFIG_COUNT` /
+  `GIT_CONFIG_KEY_<n>` / `GIT_CONFIG_VALUE_<n>`, and refuses repositories with
+  malformed `.git/config` or filter driver names containing `=` or
+  non-printable characters, so inspecting an untrusted repository (including a
+  partial clone with `.promisor` packs) is safe. `git status` also no longer
+  refreshes or locks the index, so the repository is left exactly as it was.
+- Recent-commit inspection passes `--no-show-signature`, so a repository that
+  sets `log.showSignature` and `gpg.program` cannot make the toolbox run its
+  chosen signature verifier.
+- Status and diff summaries no longer look inside submodule work trees
+  (`--ignore-submodules=dirty`), because a submodule's own config, such as a
+  filter driver defined only there, is not covered by the parent overrides. A
+  submodule whose checked-out commit moved is still reported; uncommitted edits
+  inside a submodule are not.
+- Git status and diff summaries no longer report uncommitted edits inside a
+  submodule's own work tree (`--ignore-submodules=dirty`); docs/tools.md now
+  lists the exact flags and overrides.
+- `git_diff_summary` now runs `git diff-files -z --raw --numstat` instead of
+  `git diff --numstat` (keeping `--no-ext-diff`, `--no-textconv` and
+  `--ignore-submodules=dirty`), so it no longer rewrites `.git/index` (which happened
+  even with `GIT_OPTIONAL_LOCKS=0`). Only stat-only rows
+  (status M, same mode, 0/0 lines, such as a touched file) are omitted;
+  deletions, additions, type changes and mode changes are still reported.
+- Over-long or post-redaction-expanded audit identifiers (`request_id`,
+  `tool_name`, `tool_module`, `client_identifier`) and argument keys no longer
+  break the request or drop the audit record; values exceeding their field limit
+  before or after redaction are stored as a deterministic `sha256:` digest, and
+  dictionary keys in audit summaries and `Redactor.redact_value` are redacted
+  and counted alongside values.
 
 ## [1.5.3] - 2026-10-04
 
