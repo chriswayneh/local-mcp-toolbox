@@ -12,14 +12,17 @@ from dataclasses import dataclass
 from importlib.util import find_spec
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mcp.server import MCPServer
 from mcp_types import ToolAnnotations
 
 from mcp_toolbox.models import ErrorCategory, ToolboxError
-from mcp_toolbox.server.runtime import ServerRuntime
 from mcp_toolbox.tools.common import bounded_response, require_bounded_limit
+from mcp_toolbox.tools.security.agent_audit import register_agent_config_audit_tool
+
+if TYPE_CHECKING:
+    from mcp_toolbox.server.runtime import ServerRuntime
 
 _READ_ONLY = ToolAnnotations(
     read_only_hint=True,
@@ -189,7 +192,8 @@ def register_security_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[
             },
         )
 
-    return ("security_scanner_inventory", "security_scan_repository")
+    agent_tools = register_agent_config_audit_tool(server, runtime)
+    return ("security_scanner_inventory", "security_scan_repository", *agent_tools)
 
 
 def _require_security_root(runtime: ServerRuntime, requested_path: str) -> Path:

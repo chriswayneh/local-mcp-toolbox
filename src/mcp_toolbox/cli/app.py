@@ -1,4 +1,4 @@
-"""Operator-facing commands for the MCP server."""
+"""Operator-facing commands for the MCP server and static security auditors."""
 
 import json
 from importlib.util import find_spec
@@ -10,6 +10,12 @@ import typer
 
 from mcp_toolbox.models import ToolboxError
 from mcp_toolbox.server import load_runtime, run_http, run_stdio
+from mcp_toolbox.tools.security.agent_audit import audit_agent_configs, format_text_report
+from mcp_toolbox.tools.security.models import (
+    DEFAULT_MAX_FILE_BYTES,
+    DEFAULT_MAX_FILES,
+    SEVERITY_RANK,
+)
 
 app = typer.Typer(
     name="local-mcp-toolbox",
@@ -135,6 +141,113 @@ def doctor(
             sort_keys=True,
         )
     )
+
+
+@app.command("audit-agent-configs")
+def audit_agent_configs_cmd(
+    target: Annotated[
+        Path,
+        typer.Argument(
+            help="Directory or file path to audit for risky agent instructions and MCP configs.",
+        ),
+    ] = Path("."),
+    include: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--include",
+            "-i",
+            help="Optional relative glob pattern(s) to scan instead of default discovery patterns.",
+        ),
+    ] = None,
+    output_format: Annotated[
+        str,
+        typer.Option(
+            "--format",
+            "-f",
+            help="Output format: text or json.",
+        ),
+    ] = "text",
+    json_output: Annotated[
+        bool,
+        typer.Option(
+            "--json",
+            help="Emit machine-readable JSON output.",
+        ),
+    ] = False,
+    fail_on: Annotated[
+        str,
+        typer.Option(
+            "--fail-on",
+            help="Minimum finding severity that exits with code 1: low, medium, high, or none.",
+        ),
+    ] = "low",
+    max_files: Annotated[
+        int,
+        typer.Option(
+            "--max-files",
+            help="Maximum number of candidate files to scan.",
+        ),
+    ] = DEFAULT_MAX_FILES,
+    max_file_bytes: Annotated[
+        int,
+        typer.Option(
+            "--max-file-bytes",
+            help="Maximum readable size in bytes per file.",
+        ),
+    ] = DEFAULT_MAX_FILE_BYTES,
+    limit: Annotated[
+        int,
+        typer.Option(
+            "--limit",
+            help="Maximum number of findings returned in the report.",
+        ),
+    ] = 100,
+) -> None:
+    """Audit agent instruction, skill, prompt, and MCP config files without starting the server."""
+
+    normalized_format = output_format.strip().lower()
+    if normalized_format not in {"text", "json"}:
+        typer.echo(
+            "INVALID_INPUT: --format must be 'text' or 'json'.",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    if json_output:
+        normalized_format = "json"
+
+    normalized_fail_on = fail_on.strip().lower()
+    if normalized_fail_on not in {"low", "medium", "high", "none"}:
+        typer.echo(
+            "INVALID_INPUT: --fail-on must be 'low', 'medium', 'high', or 'none'.",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    try:
+        report, _ = audit_agent_configs(
+            target,
+            include_globs=include,
+            max_files=max_files,
+            max_file_bytes=max_file_bytes,
+            limit=limit,
+        )
+    except ToolboxError as error:
+        typer.echo(f"{error.category}: {error.message}", err=True)
+        raise typer.Exit(code=2) from error
+
+    if normalized_format == "json":
+        typer.echo(json.dumps(report.model_dump(mode="json"), indent=2, sort_keys=True))
+    else:
+        typer.echo(format_text_report(report))
+
+    if normalized_fail_on != "none":
+        threshold_rank = SEVERITY_RANK[normalized_fail_on]
+        should_fail = any(
+            count > 0 and SEVERITY_RANK[sev] >= threshold_rank
+            for sev, count in report.severity_counts.items()
+        )
+        if should_fail:
+            raise typer.Exit(code=1)
 
 
 def _audit_parent_exists(audit_path: Path) -> bool:

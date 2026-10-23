@@ -113,3 +113,13 @@ never used. Incomplete evidence can produce only `partial` or `unverifiable`
 absence results, never a false missing-dependency claim.
 
 Runtime metrics contain only aggregate counts and duration totals grouped by sanitized module and outcome. They never retain argument values, response content, request identifiers, client identifiers, filesystem paths, repository names, model prompts, or generated text.
+
+Agent instruction and MCP configuration auditing (`security_audit_agent_configs` and
+`local-mcp-toolbox audit-agent-configs`) inspects natural-language instruction files,
+skill definitions, prompt templates, and JSON MCP server configurations statically
+in-process. It never executes the inspected files, invokes a shell, or contacts network
+endpoints. On POSIX it walks path components relative to the scan root with `O_NOFOLLOW`
+and opens candidate files with `O_NONBLOCK`, accepting only single-link regular files
+within `max_file_bytes` and skipping blocked sensitive filenames. Reported snippets pass
+through central secret redaction and escape bidirectional, zero-width, Unicode tag, and
+C0/C1 control characters so terminal and MCP clients never render raw control sequences.

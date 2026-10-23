@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mcp_toolbox.models import ErrorCategory, ResponseMetadata, ToolboxError, ToolResponse
-from mcp_toolbox.server.runtime import ServerRuntime
+
+if TYPE_CHECKING:
+    from mcp_toolbox.server.runtime import ServerRuntime
 
 
 def bounded_response(

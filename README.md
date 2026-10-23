@@ -70,7 +70,7 @@ The default profile has no approved file roots or optional integrations. Start b
 | Metrics | Aggregate request outcomes and latency | In-process counters only; no arguments, responses, identifiers, or secrets |
 | Docker | Opt-in container metadata, health, and bounded logs | Official SDK only; no lifecycle, exec, mount, environment, or command access |
 | Logs | Tails, literal search, and deterministic error grouping | Dedicated approved roots, output limits, and central redaction |
-| Security | Bandit availability and normalized scan findings | Fixed scanner invocation on a private copy of only the authorized files; no user-controlled command arguments or fixes |
+| Security | Bandit repository scan, scanner inventory, and static auditing of agent instructions, skills, prompts, and MCP configs | Fixed Bandit invocation on a private snapshot; static in-process agent config inspection with `O_NOFOLLOW`, single-link regular-file checks, secret redaction, and control-character escaping |
 | Infrastructure | Project-type detection and top-level configuration inventory | Separate approved roots; no recursive content inspection |
 | Incidents | Timestamped evidence and deterministic summaries | Read-only, bounded observations: never root-cause claims |
 | Audit | Sanitized JSONL accountability trail | Shape-only request summaries, retention, and size limits |
@@ -91,6 +91,16 @@ The server enforces the YAML file passed to `--config`. The shipped default, `co
 - HTTP is disabled. `profile: advanced` is rejected.
 
 Those are the running defaults, not the schema ceilings. An operator can raise several numbers inside a private profile; the ceilings, and the defaults that apply only after an integration is enabled, are in the [security model](docs/security-model.md#limits-in-force). Pattern redaction is not a guarantee that every secret is recognized.
+
+### Audit Agent Instructions and MCP Configs
+Teams often adopt shared instruction files (`AGENTS.md`, `CLAUDE.md`, `SKILL.md`, `.cursorrules`, `.github/copilot-instructions.md`) and `.mcp.json` configurations across repositories. You can audit these files statically from the CLI or in CI before an agent loads them, without starting the MCP server:
+
+```bash
+.venv/bin/local-mcp-toolbox audit-agent-configs demo/agent-configs/benign
+.venv/bin/local-mcp-toolbox audit-agent-configs demo/agent-configs/risky --json --fail-on medium
+```
+
+The auditor checks five deterministic categories (`hidden_unicode`, `prompt_override`, `dangerous_execution`, `credential_or_exfil`, and `mcp_config_risk`), redacts secrets in snippets, escapes invisible or bidirectional control characters, and exits with code `0` when clean, `1` when findings meet or exceed `--fail-on`, and `2` on invalid input or unreadable targets. The same check is available to MCP clients as `security_audit_agent_configs` when `security_scanners` is enabled.
 
 ### Connect a Client
 The repository includes stdio configuration templates for the clients below. Template parsing and the installed server's launch contract are tested; individual desktop application versions are not certified. Adding a client entry lets the client start the process: it does **not** grant the server broader permissions.

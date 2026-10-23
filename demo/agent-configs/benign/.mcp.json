@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "local-mcp-toolbox": {
+      "command": "${LOCAL_MCP_TOOLBOX_EXE}",
+      "args": ["serve", "--config", "${LOCAL_MCP_TOOLBOX_CONFIG}"],
+      "env": {
+        "LOCAL_MCP_TOOLBOX_HTTP_TOKEN": "${LOCAL_MCP_TOOLBOX_HTTP_TOKEN}"
+      }
+    },
+    "pinned-local-helper": {
+      "command": "npx",
+      "args": ["@modelcontextprotocol/server-filesystem@0.6.2", "/approved/workspace"]
+    }
+  }
+}

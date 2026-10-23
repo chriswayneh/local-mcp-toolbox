@@ -5,6 +5,15 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
 
 ## [Unreleased]
 
+- Add `security_audit_agent_configs` and the `local-mcp-toolbox audit-agent-configs`
+  CLI command to statically audit agent instruction files (`SKILL.md`, `AGENTS.md`,
+  `CLAUDE.md`, `.cursorrules`, `.github/copilot-instructions.md`, and related rules)
+  and MCP client configuration files (`.mcp.json`, `mcp.json`,
+  `claude_desktop_config.json`) across five deterministic categories:
+  `hidden_unicode`, `prompt_override`, `dangerous_execution`, `credential_or_exfil`,
+  and `mcp_config_risk`.
+- Add synthetic benign and risky agent configuration fixtures under
+  `demo/agent-configs/`.
 - Passwords written as JSON, such as `"password": "hunter2"`, are now redacted.
   Before, the password rule only matched `password=...` or `password: ...`, so
   quoted JSON keys slipped through. Also, in structured data, any text value
