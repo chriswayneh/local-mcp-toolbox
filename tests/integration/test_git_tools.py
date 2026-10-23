@@ -299,3 +299,72 @@ def test_status_and_diff_never_run_filters_defined_only_in_a_submodule(
     asyncio.run(scenario())
 
     assert not marker.exists(), "Git tools ran a filter defined only in a submodule"
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32" or shutil.which("sh") is None,
+    reason="POSIX shell probe; Git for Windows cannot run it as a filter",
+)
+def test_filter_driver_with_equals_in_name_never_runs_probe(
+    tmp_path: Path, git_repository: Path
+) -> None:
+    from mcp_toolbox.models import ErrorCategory, ToolboxError
+    from mcp_toolbox.tools.git.handlers import GitRunner, _safe_git_environment
+
+    marker = tmp_path / "eq-filter-ran"
+    probe = _write_probe(tmp_path, marker)
+    config_path = git_repository / ".git" / "config"
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8") + f'\n[filter "a=b"]\n\tclean = {probe}\n',
+        encoding="utf-8",
+    )
+    (git_repository / ".gitattributes").write_text(
+        "*.md filter=a=b\n*.txt filter=a=b\n", encoding="utf-8"
+    )
+    readme = git_repository / "README.md"
+    # Same byte length as the committed "Initial content\n" so git status must run clean filter.
+    readme.write_text("Initial CONTENX\n", encoding="utf-8")
+    stat = readme.stat()
+    os.utime(readme, (stat.st_atime + 10, stat.st_mtime + 10))
+
+    # Sanity check: plain `git -c filter.a=b.clean= status` splits on the first '=' and runs probe.
+    _git(git_repository, "-c", "filter.a=b.clean=", "status", "--porcelain=v1")
+    assert marker.exists(), 'fixture did not make git status run the [filter "a=b"] clean command'
+    marker.unlink()
+
+    # Defense 1: GIT_CONFIG_KEY_<n> in _safe_git_environment does not split on '=' in key names.
+    os.utime(readme, (stat.st_atime + 20, stat.st_mtime + 20))
+    subprocess.run(
+        ["git", "-C", str(git_repository), "status", "--porcelain=v1"],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=_safe_git_environment(["-c", "filter.a=b.clean=", "-c", "filter.a=b.required=false"]),
+    )
+    assert not marker.exists(), "GIT_CONFIG_KEY_<n> failed to blank filter.a=b.clean"
+
+    # Defense 2: GitRunner and MCP tools refuse the repository before running git status/diff.
+    runtime = build_runtime(
+        ToolboxSettings(
+            profile=PermissionProfile.STANDARD,
+            filesystem=FilesystemSettings(approved_roots=[tmp_path]),
+            integrations=IntegrationSettings(git=True),
+            git=GitSettings(approved_repositories=[git_repository]),
+            audit=AuditSettings(path=tmp_path / "audit" / "events.jsonl"),
+        )
+    )
+    with pytest.raises(ToolboxError) as caught:
+        GitRunner(runtime).run(git_repository, ["status", "--porcelain=v1"])
+    assert caught.value.category is ErrorCategory.PERMISSION_DENIED
+    assert not marker.exists()
+
+    server = create_server(runtime)
+
+    async def scenario() -> None:
+        async with Client(server) as client:
+            for tool in ("git_repository_status", "git_diff_summary"):
+                result = await client.call_tool(tool, {"repository": str(git_repository)})
+                assert result.is_error is True
+
+    asyncio.run(scenario())
+    assert not marker.exists(), '[filter "a=b"] executed probe through MCP tool'
