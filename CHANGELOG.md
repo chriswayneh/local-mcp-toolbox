@@ -37,16 +37,19 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
   (`password=''hunter2`); only an exact `"k": ""` is kept. camelCase keys such
   as `authToken`, `accessToken`, `refreshToken`, `idToken`, and `myApiKey`,
   prefixed keys such as `client_credentials` and `user_pass`, and XML elements
-  with attributes, prefixes, camelCase, or all-caps names (`<password type="x">`,
-  `<db_password>`, `<authToken>`, `<AUTHTOKEN>`, `<MYAPIKEY>`) are redacted, as
-  are all-caps keys without a separator (`AUTHTOKEN`, `MYAPIKEY`; plural count
-  settings such as `MAXTOKENS=4096` are left alone). A quoted marker is treated
-  as already redacted only when the rest of the line is closing brackets or
-  separators (and after `:` only when `,` or `;` precedes a non-empty quoted key
-  that is not itself shaped like a marker, with CRLF lines supported), so
-  `password="[REDACTED_X]", hunter22` and `password='[REDACTED_X]''[REDACTED_X]':hunter22`
-  are redacted. Pathological long lines no longer take seconds to redact
-  (several patterns and the trailing-marker trim were quadratic).
+  with attributes, prefixes, suffixes, camelCase, or all-caps names
+  (`<password type="x">`, `<db_password>`, `<secretKey>`, `<SECRETKEY>`,
+  `<userPasswd>`, `<userPwd>`, `<authToken>`, `<AUTHTOKEN>`, `<MYAPIKEY>`) are
+  redacted, as are all-caps keys without a separator (`AUTHTOKEN`, `MYAPIKEY`;
+  plural count settings such as `MAXTOKENS=4096` are left alone). A quoted
+  marker or empty quoted value is treated as already safe only when the rest of
+  the line is closing brackets or trailing commas (or, when the secret key
+  itself is quoted before `:`, when `,` precedes a quoted identifier key and
+  structured value start, with CRLF lines supported), so
+  `password="[REDACTED_X]", hunter22`, `password: "[REDACTED_X]", "a": hunter22`,
+  and `password='[REDACTED_X]''[REDACTED_X]':hunter22` are redacted.
+  Pathological long lines no longer take seconds to redact (several patterns,
+  the XML tag rule, and the trailing-marker trim were made linear).
 
 ## [1.5.3] - 2026-10-04
 

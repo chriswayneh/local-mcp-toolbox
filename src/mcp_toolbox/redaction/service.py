@@ -29,26 +29,30 @@ class _Rule:
 # An exact redaction marker is already safe only when nothing but delimiters follows it on
 # the line (``password=[REDACTED_X] realsecret`` still leaks ``realsecret``).
 _MARKER_AHEAD = r"(?:\[REDACTED_[A-Z_]+\]['\"]?[ \t,;}\]]*)+\r?$"
-# After a closing quote, the next non-blank character must end the value (or the line).
-_QUOTE_END = r"(?=[ \t]*(?:[,;}\]):]|\r?$))"
-# Rest of line is only closing brackets/separators (``\r`` allowed before the newline).
-_CLOSERS_TO_EOL = r"[ \t,;}\])]*\r?$"
-# A quoted, non-empty key that is not itself shaped like a marker, followed by ``:``.
-_NEXT_KEY = r"(?:\"(?!\[REDACTED_)[^\"\r\n]+\"|'(?!\[REDACTED_)[^'\r\n]+')[ \t]*:"
-# After a ``k: "[REDACTED_X]"`` marker: closers to end of line, or ``,``/``;`` and the next key.
-_STRUCTURAL_COLON = (
-    r"(?=" + _CLOSERS_TO_EOL + r"|[ \t}\])]*[,;][ \t]*(?:[{\[][ \t]*)*" + _NEXT_KEY + r")"
+# Rest of line is only closing brackets or trailing commas (``\r`` allowed before the newline).
+_CLOSERS_TO_EOL = r"[ \t,}\])]*\r?$"
+# A quoted identifier-like key (not a marker) followed by ``:`` and a structured value start.
+_NEXT_KEY = (
+    r"(?:\"(?!\[REDACTED_)[A-Za-z0-9_.-]+\"|'(?!\[REDACTED_)[A-Za-z0-9_.-]+')"
+    r"[ \t]*:[ \t]*(?:['\"\d\[{]|-[0-9]|true\b|false\b|null\b|None\b|True\b|False\b|Full\b"
+    r"|\[REDACTED_)"
 )
-# After a ``k="[REDACTED_X]"`` marker only closers/separators may follow.
+# After a quoted-key ``"k": "v"`` value: closers to EOL, or ``,`` and the next key/value.
+_STRUCTURAL_COLON = (
+    r"(?=" + _CLOSERS_TO_EOL + r"|[ \t}\])]*,[ \t]*(?:[{\[][ \t]*)*" + _NEXT_KEY + r")"
+)
+# After ``k=...`` or an unquoted-key ``k: ...`` value, only closers/commas to EOL may follow.
 _STRUCTURAL_EQUALS = r"(?=" + _CLOSERS_TO_EOL + r")"
-_QUOTED_MARKER = (
-    r"(?P<mq>['\"])\[REDACTED_[A-Z_]+\](?P=mq)"
-    + r"(?(colon)"
+_STRUCTURAL_TAIL = (
+    r"(?(colon)(?(kquote)"
     + _STRUCTURAL_COLON
     + r"|"
     + _STRUCTURAL_EQUALS
+    + r")|"
+    + _STRUCTURAL_EQUALS
     + r")"
 )
+_QUOTED_MARKER = r"(?P<mq>['\"])\[REDACTED_[A-Z_]+\](?P=mq)" + _STRUCTURAL_TAIL
 
 
 _TRAILING_DELIMITERS = " \t,;}]'\""
@@ -96,17 +100,18 @@ def _keyed_rules(category: str, key: str) -> tuple[_Rule, _Rule]:
     value with spaces or punctuation cannot leak its tail.
     """
 
-    prefix = rf"(?im){key}['\"]?[ \t]*(?:(?P<colon>:)|=)[ \t]*"
+    key_pattern = rf"(?>(?P<kquote>['\"]){key}(?P=kquote)|(?<!['\"]){key}['\"]?|['\"]{key}['\"]?)"
+    prefix = rf"(?im){key_pattern}[ \t]*(?:(?P<colon>:)|=)[ \t]*"
     quoted = _Rule(
         category,
         re.compile(
             # Only `key: "value"` (JSON, YAML, dict reprs). With `key=` an opening quote
             # proves nothing about where the value ends, so the unquoted rule takes the line.
-            rf"(?im){key}['\"]?[ \t]*:[ \t]*" + r"(?P<quote>['\"])"
-            r"(?!\[REDACTED_[A-Z_]+\](?P=quote)" + _STRUCTURAL_COLON + r")"
+            rf"(?im){key_pattern}[ \t]*(?P<colon>:)[ \t]*" + r"(?P<quote>['\"])"
+            r"(?!\[REDACTED_[A-Z_]+\](?P=quote)" + _STRUCTURAL_TAIL + r")"
             r"(?P<secret>(?:\\[^\r\n]|(?P=quote)(?P=quote)|(?!(?P=quote))[^\\\r\n])+)"
             # The closing quote must end the value; otherwise the unquoted rule takes the line.
-            r"(?P=quote)" + _QUOTE_END
+            r"(?P=quote)" + _STRUCTURAL_TAIL
         ),
     )
     unquoted = _Rule(
@@ -116,7 +121,7 @@ def _keyed_rules(category: str, key: str) -> tuple[_Rule, _Rule]:
             # An empty quoted JSON/YAML value (``"k": ""``) holds nothing to leak; keep its
             # quotes and the line. After ``=`` the quotes may be the secret itself.
             + r"(?(colon)(?!(?:\"\"|'')"
-            + _STRUCTURAL_COLON
+            + _STRUCTURAL_TAIL
             + r"))"
             + r"(?!['\"]?"
             + _MARKER_AHEAD
@@ -178,11 +183,12 @@ class Redactor:
         _Rule(
             "XML_SECRET",
             re.compile(
-                r"(?i)<(?P<tag>(?:[a-z0-9_.-]*[-_.:])?(?:password|passwd|pwd|pass|secret|token"
-                r"|api[-_]?key|private[-_]?key|credentials?)|[a-z0-9_.-]*(?:password|secret)"
+                r"(?i)<(?P<tag>(?:[a-z0-9_.-]*[-_.:])?(?:pass|token|api[-_]?key"
+                r"|private[-_]?key|credentials?)"
+                r"|(?=[a-z0-9_.:-]*?(?:password|passwd|pwd|secret))[a-z0-9_.:-]++"
                 # Case-sensitive, matching the key=value rules: authToken, myApiKey, AUTHTOKEN.
-                r"|(?-i:(?:[A-Za-z0-9_.-]*[-_.:])?(?:[A-Z0-9]+(?:TOKEN|APIKEY)"
-                r"|[A-Za-z0-9_.-]*[a-z0-9](?:Token|ApiKey))))"
+                r"|(?-i:(?:[A-Za-z0-9_.-]*[-_.:])?[A-Z0-9]+(?:TOKEN|APIKEY)"
+                r"|[A-Za-z0-9_.:-]*[a-z0-9](?:Token|ApiKey)))"
                 r"(?:\s[^<>]*)?>(?!\[REDACTED_[A-Z_]+\]</)(?P<secret>[^<]+)</(?P=tag)>"
             ),
         ),

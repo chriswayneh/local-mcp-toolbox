@@ -97,6 +97,10 @@ def test_bypass_is_not_a_pass_key() -> None:
         '"password": "' + "\\\\" * 30000,
         "<password>" * 6000,
         "password=" + "[REDACTED_X] " * 5000 + "z",
+        "<" + "a_" * 30000,
+        "<" + "A_" * 30000,
+        "<" + "a." * 30000,
+        "<" + "a-" * 30000,
     ],
     # Keep test ids short: pytest puts the id in PYTEST_CURRENT_TEST, and Windows caps an
     # environment variable at 32767 characters.
@@ -186,10 +190,20 @@ def test_trailing_marker_trim_is_linear(raw: str) -> None:
         '"password": "[REDACTED_X]", "[REDACTED_Y]": hunter22',
         '"password": "", hunter22',
         'password="[REDACTED_X]", "user": hunter22',
+        'password: "[REDACTED_X]", "a": hunter22',
+        'password: "[REDACTED_X]"; "a": hunter22',
+        'password: "", "a": hunter22',
+        "password: ''; 'a': hunter22",
+        'password: "[REDACTED_X]", "hunter22": 1',
+        'password: "part1"; "a": hunter22',
+        'password": "[REDACTED_X]", "hunter22": 1',
+        '"password": "[REDACTED_X]", "a": hunter22',
+        '"password": "part1"; "a": hunter22',
     ],
 )
 def test_marker_followed_by_non_structural_text_is_redacted(raw: str) -> None:
-    assert "hunter22" not in R.redact(raw).text
+    out = R.redact(raw).text
+    assert "hunter22" not in out and "part1" not in out
 
 
 @pytest.mark.parametrize(
@@ -209,7 +223,21 @@ def test_crlf_and_structural_json_are_not_over_redacted(raw: str) -> None:
     assert result.redaction_count == 0
 
 
-@pytest.mark.parametrize("tag", ["authToken", "accessToken", "myApiKey", "AUTHTOKEN", "MYAPIKEY"])
+@pytest.mark.parametrize(
+    "tag",
+    [
+        "authToken",
+        "accessToken",
+        "myApiKey",
+        "AUTHTOKEN",
+        "MYAPIKEY",
+        "secretKey",
+        "secret_key",
+        "SECRETKEY",
+        "userPasswd",
+        "userPwd",
+    ],
+)
 def test_xml_camel_and_caps_tags_are_redacted(tag: str) -> None:
     out = R.redact(f"<{tag}>hunter22</{tag}>").text
     assert "hunter22" not in out
