@@ -7,7 +7,7 @@ import shutil
 import stat
 import subprocess  # nosec B404
 import sys
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,19 +23,13 @@ from mcp_toolbox.tools.common import bounded_response, require_bounded_limit
 
 _FIELD_SEPARATOR = "\x1f"
 _RECORD_SEPARATOR = "\x1e"
-# Entries Git reads from .git; a symlink at any of them could point outside the repository.
-_GIT_METADATA_ENTRIES = (
-    "objects",
-    "refs",
-    "HEAD",
-    "config",
-    "packed-refs",
-    "logs",
-    "info",
-    "worktrees",
-)
+# Entries Git reads from .git; a symlink or special file at any of them is refused.
+_GIT_METADATA_DIRECTORIES = ("objects", "refs", "logs", "info", "worktrees")
+_GIT_METADATA_FILES = ("HEAD", "config", "packed-refs", "index")
+_GIT_METADATA_ENTRIES = (*_GIT_METADATA_DIRECTORIES, *_GIT_METADATA_FILES)
 # Longest alternates chain accepted; longer chains are refused rather than walked.
 _MAX_ALTERNATE_STORES = 64
+_MAX_GIT_METADATA_BYTES = 1_048_576
 _READ_ONLY = ToolAnnotations(
     read_only_hint=True,
     destructive_hint=False,
@@ -83,7 +77,7 @@ class GitRunner:
 
         git_dir = repository / ".git"
         stores = _require_self_contained_git_dir(repository, git_dir)
-        before = _git_dir_fingerprint(git_dir)
+        before = _git_dir_fingerprint(git_dir, stores)
         # Explicit --git-dir/--work-tree win over repo-local core.worktree, so Git can only
         # read the approved working tree.
         command = [
@@ -95,14 +89,14 @@ class GitRunner:
             *arguments,
         ]
         # The full check above runs once. Immediately before exec and again after Git exits, a
-        # cheap fingerprint (identity and mtime of every object and ref directory, plus the
-        # redirect files) must still match: any rename, swap, or plant in between changes a
-        # directory's mtime, so the output is discarded instead of returned.
-        if _git_dir_fingerprint(git_dir) != before:
+        # cheap fingerprint (identity, mtime, and ctime of every object and ref directory, plus
+        # the redirect files) must still match: any rename, swap, or plant in between changes a
+        # directory's timestamps, so the output is discarded instead of returned.
+        if _git_dir_fingerprint(git_dir, stores) != before:
             raise _git_dir_changed()
         environment = _safe_git_environment(repository)
         try:
-            with _pinned_object_view(git_dir, stores) as (object_view, pinned_fds):
+            with _pinned_object_view(repository, git_dir, stores) as (object_view, pinned_fds):
                 if object_view is not None:
                     environment["GIT_OBJECT_DIRECTORY"] = object_view
                 # The command is assembled only from the resolved Git executable, approved
@@ -132,7 +126,7 @@ class GitRunner:
                 remediation="Check the local Git installation and server permissions.",
             ) from error
 
-        if _git_dir_fingerprint(git_dir) != before:
+        if _git_dir_fingerprint(git_dir, stores) != before:
             raise _git_dir_changed()
         if completed.returncode != 0:
             raise ToolboxError(
@@ -291,13 +285,7 @@ def _require_self_contained_git_dir(repository: Path, git_dir: Path) -> list[Pat
             "The approved repository has no .git directory.",
             "Approve the top level of a Git working tree.",
         )
-    for name in _GIT_METADATA_ENTRIES:
-        if (git_dir / name).is_symlink():
-            raise _git_denial(
-                f"The approved repository's .git/{name} is a symlink, so Git could read it "
-                "from outside the repository.",
-                "Replace the symlink with the real directory or file.",
-            )
+    _refuse_invalid_metadata_entries(git_dir)
     root = repository.resolve()
     for name in ("objects", "refs"):
         try:
@@ -330,8 +318,43 @@ def _require_self_contained_git_dir(repository: Path, git_dir: Path) -> list[Pat
     initial_store = (git_dir / "objects").resolve(strict=False)
     if not initial_store.is_relative_to(root):
         raise _alternates_denial()
+    stores = _walk_alternate_stores(root, initial_store)
+    for store in stores:
+        _refuse_object_store_entries(store)
+    return stores
+
+
+def _refuse_invalid_metadata_entries(git_dir: Path) -> None:
+    for name in _GIT_METADATA_ENTRIES:
+        entry = git_dir / name
+        if entry.is_symlink():
+            raise _git_denial(
+                f"The approved repository's .git/{name} is a symlink, so Git could read it "
+                "from outside the repository.",
+                "Replace the symlink with the real directory or file.",
+            )
+        try:
+            info = os.lstat(entry)
+        except FileNotFoundError:
+            continue
+        except OSError as error:
+            raise _git_denial(
+                f"The approved repository's .git/{name} could not be inspected.",
+                "Check the repository's .git directory permissions.",
+            ) from error
+        expected_dir = name in _GIT_METADATA_DIRECTORIES
+        valid = stat.S_ISDIR(info.st_mode) if expected_dir else stat.S_ISREG(info.st_mode)
+        if not valid:
+            raise _git_denial(
+                f"The approved repository's .git/{name} is not a regular file.",
+                f"Remove the non-file entry at .git/{name}.",
+            )
+
+
+def _walk_alternate_stores(root: Path, initial_store: Path) -> list[Path]:
     pending = [initial_store]
     seen: set[Path] = set()
+    ordered_stores: list[Path] = []
     visits = 0
     while pending:
         objects = pending.pop()
@@ -346,6 +369,8 @@ def _require_self_contained_git_dir(repository: Path, git_dir: Path) -> list[Pat
         if key in seen:
             continue
         seen.add(key)
+        if key != initial_store:
+            ordered_stores.append(key)
         if len(seen) > _MAX_ALTERNATE_STORES:
             raise _alternates_denial()
         http_alternates = objects / "info" / "http-alternates"
@@ -355,79 +380,138 @@ def _require_self_contained_git_dir(repository: Path, git_dir: Path) -> list[Pat
                 "Git objects from another location.",
                 "Remove objects/info/http-alternates or approve a full clone.",
             )
-        alternates = objects / "info" / "alternates"
-        if alternates.is_symlink():
-            raise _alternates_denial()
-        if not alternates.is_file():
+        for resolved in _read_alternates_targets(root, objects):
+            pending.append(resolved)
+    return ordered_stores
+
+
+def _read_alternates_targets(root: Path, objects: Path) -> list[Path]:
+    alternates = objects / "info" / "alternates"
+    if alternates.is_symlink():
+        raise _alternates_denial()
+    try:
+        alt_info = os.lstat(alternates)
+    except FileNotFoundError:
+        return []
+    except OSError as error:
+        raise _alternates_denial() from error
+    if not stat.S_ISREG(alt_info.st_mode):
+        raise _git_denial(
+            "The approved repository's objects/info/alternates is not a regular file.",
+            "Remove the non-file entry at objects/info/alternates.",
+        )
+    try:
+        lines = _read_regular_git_file(alternates).decode("utf-8", errors="replace").splitlines()
+    except OSError as error:
+        raise _alternates_denial() from error
+    targets: list[Path] = []
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#"):
             continue
+        # Git allows C-style quoted paths here; refuse them rather than parse them.
+        if line.startswith('"'):
+            raise _alternates_denial()
+        target = Path(line)
+        if not target.is_absolute():
+            # Relative entries are relative to the object store that lists them.
+            target = objects / target
         try:
-            lines = alternates.read_text(encoding="utf-8", errors="replace").splitlines()
+            resolved = target.resolve(strict=False)
         except OSError as error:
             raise _alternates_denial() from error
-        for raw in lines:
-            line = raw.strip()
-            if not line or line.startswith("#"):
-                continue
-            # Git allows C-style quoted paths here; refuse them rather than parse them.
-            if line.startswith('"'):
+        if not resolved.is_relative_to(root):
+            raise _alternates_denial()
+        current = root
+        for part in resolved.relative_to(root).parts:
+            current = current / part
+            if current.is_symlink():
                 raise _alternates_denial()
-            target = Path(line)
-            if not target.is_absolute():
-                # Relative entries are relative to the object store that lists them.
-                target = objects / target
-            try:
-                resolved = target.resolve(strict=False)
-            except OSError as error:
-                raise _alternates_denial() from error
-            if not resolved.is_relative_to(root):
-                raise _alternates_denial()
-            # Alternates chain: the borrowed store may list alternates of its own.
-            pending.append(resolved)
-    return [store for store in seen if store != initial_store]
+        targets.append(resolved)
+    return targets
 
 
 def _refuse_nested_symlinks(git_dir: Path) -> None:
-    """Refuse a symlink in refs, objects/info, objects/pack, or at any objects/<entry>.
+    """Refuse a symlink or special file in refs, objects/info, objects/pack, or objects/<entry>.
 
-    Loose-object files inside objects/xx are not walked, so a large repository costs about
-    256 lstat calls plus its refs and packs.
+    Loose-object files inside objects/xx are checked during private-view construction, so this
+    walk costs about 256 lstat calls plus the repository's refs and packs.
     """
 
-    def fail(_error: OSError) -> None:
-        raise _git_denial(
-            "The approved repository's .git could not be inspected.",
-            "Check the repository's .git directory permissions.",
-        )
+    _refuse_object_store_entries(git_dir / "objects")
+    _refuse_tree_entries(git_dir / "refs", "refs")
 
-    def refuse(name: str) -> ToolboxError:
-        return _git_denial(
-            f"The approved repository's .git/{name} contains a symlink, so Git could "
-            "read objects or refs from outside the repository.",
-            "Replace the symlink with the real directory or file.",
-        )
 
-    objects = git_dir / "objects"
+def _refuse_object_store_entries(objects: Path) -> None:
     try:
         top_entries = list(os.scandir(objects))
     except FileNotFoundError:
         top_entries = []
     except OSError as error:
-        fail(error)
+        _fail_git_inspect(error)
         top_entries = []
     for entry in top_entries:
         if entry.is_symlink():
-            raise refuse("objects")
-    for top, name in (
-        (git_dir / "refs", "refs"),
-        (objects / "info", "objects"),
-        (objects / "pack", "objects"),
-    ):
-        if not top.exists():
+            raise _symlink_in_git_denial("objects")
+        try:
+            mode = entry.stat(follow_symlinks=False).st_mode
+        except OSError as error:
+            _fail_git_inspect(error)
             continue
-        for directory, subdirectories, filenames in os.walk(top, onerror=fail, followlinks=False):
-            for item in (*subdirectories, *filenames):
-                if (Path(directory) / item).is_symlink():
-                    raise refuse(name)
+        if not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
+            raise _non_regular_in_git_denial("objects")
+    for sub in ("info", "pack"):
+        _refuse_tree_entries(objects / sub, "objects")
+
+
+def _refuse_tree_entries(top: Path, name: str) -> None:
+    try:
+        top_info = os.lstat(top)
+    except FileNotFoundError:
+        return
+    except OSError as error:
+        _fail_git_inspect(error)
+        return
+    if stat.S_ISLNK(top_info.st_mode):
+        raise _symlink_in_git_denial(name)
+    if not stat.S_ISDIR(top_info.st_mode):
+        raise _non_regular_in_git_denial(name)
+    for directory, subdirectories, filenames in os.walk(
+        top, onerror=_fail_git_inspect, followlinks=False
+    ):
+        for item in (*subdirectories, *filenames):
+            item_path = Path(directory) / item
+            try:
+                info = os.lstat(item_path)
+            except OSError as error:
+                _fail_git_inspect(error)
+                continue
+            if stat.S_ISLNK(info.st_mode):
+                raise _symlink_in_git_denial(name)
+            if not (stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode)):
+                raise _non_regular_in_git_denial(name)
+
+
+def _fail_git_inspect(_error: OSError) -> None:
+    raise _git_denial(
+        "The approved repository's .git could not be inspected.",
+        "Check the repository's .git directory permissions.",
+    )
+
+
+def _symlink_in_git_denial(name: str) -> ToolboxError:
+    return _git_denial(
+        f"The approved repository's .git/{name} contains a symlink, so Git could "
+        "read objects or refs from outside the repository.",
+        "Replace the symlink with the real directory or file.",
+    )
+
+
+def _non_regular_in_git_denial(name: str) -> ToolboxError:
+    return _git_denial(
+        f"The approved repository's .git/{name} contains something that is not a regular file.",
+        f"Remove the non-file entry from .git/{name}.",
+    )
 
 
 # Linux exposes an open descriptor as a path (/proc/self/fd/N) that Git can follow inside its
@@ -439,7 +523,7 @@ _DIRECTORY_FLAGS = (
     | getattr(os, "O_NOFOLLOW", 0)
     | getattr(os, "O_CLOEXEC", 0)
 )
-# O_NONBLOCK: opening a FIFO planted in objects/pack must not block the server.
+# O_NONBLOCK: opening a FIFO planted in .git must not block the server.
 _FILE_FLAGS = (
     os.O_RDONLY
     | getattr(os, "O_NOFOLLOW", 0)
@@ -451,16 +535,48 @@ _MAX_LOOSE_OBJECTS = 50_000
 _HEX = frozenset("0123456789abcdef")
 
 
+def _read_regular_git_file(path: Path, max_bytes: int = _MAX_GIT_METADATA_BYTES) -> bytes:
+    """Read a regular file inside .git without following symlinks or blocking on FIFOs."""
+
+    descriptor = os.open(path, _FILE_FLAGS)
+    try:
+        info = os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode):
+            raise _git_denial(
+                f"The approved repository's {path.name} is not a regular file.",
+                f"Remove the non-file entry at {path.name}.",
+            )
+        if info.st_size > max_bytes:
+            raise _git_denial(
+                f"The approved repository's {path.name} exceeds the metadata size limit.",
+                f"Inspect a repository whose {path.name} is at most {max_bytes} bytes.",
+            )
+        chunks: list[bytes] = []
+        total = 0
+        while chunk := os.read(descriptor, 65_536):
+            total += len(chunk)
+            if total > max_bytes:
+                raise _git_denial(
+                    f"The approved repository's {path.name} exceeds the metadata size limit.",
+                    f"Inspect a repository whose {path.name} is at most {max_bytes} bytes.",
+                )
+            chunks.append(chunk)
+        return b"".join(chunks)
+    finally:
+        with suppress(OSError):
+            os.close(descriptor)
+
+
 @contextmanager
 def _pinned_object_view(
-    git_dir: Path, stores: list[Path]
+    repository: Path, git_dir: Path, stores: Sequence[Path]
 ) -> Iterator[tuple[str | None, tuple[int, ...]]]:
     """Give Git a private object directory bound to descriptors opened without following links.
 
-    `.git`, `objects`, `objects/pack`, each pack file, and each loose `objects/xx` directory are
-    opened relative to their verified parent with O_NOFOLLOW. The private view points at those
-    descriptors, so swapping a name for a symlink while Git runs cannot change what Git reads.
-    Elsewhere (macOS, Windows) the fingerprint checks around exec are the only guard.
+    `.git`, `objects`, `objects/pack`, each pack file, and each loose `objects/xx` directory
+    (plus any in-repository alternate stores) are opened relative to their verified parent with
+    O_NOFOLLOW. The private view points at those descriptors, so swapping a name for a symlink
+    while Git runs cannot change what Git reads.
     """
 
     if not _FD_PATHS:
@@ -476,7 +592,7 @@ def _pinned_object_view(
         with TemporaryDirectory(prefix="local-mcp-toolbox-git-objects-") as scratch:
             view = Path(scratch) / "objects"
             try:
-                _build_object_view(git_dir, stores, view, keep)
+                _build_object_view(repository, git_dir, stores, view, keep)
             except OSError as error:
                 # ELOOP from O_NOFOLLOW means a name became a symlink after the check.
                 raise _git_dir_changed() from error
@@ -488,13 +604,42 @@ def _pinned_object_view(
 
 
 def _build_object_view(
-    git_dir: Path, stores: list[Path], view: Path, keep: Callable[[int], int]
+    repository: Path,
+    git_dir: Path,
+    stores: Sequence[Path],
+    view: Path,
+    keep: Callable[[int], int],
 ) -> None:
-    (view / "info").mkdir(parents=True)
-    (view / "pack").mkdir()
-    loose_count = 0
     git_fd = keep(os.open(git_dir, _DIRECTORY_FLAGS))
     objects_fd = keep(os.open("objects", _DIRECTORY_FLAGS, dir_fd=git_fd))
+    loose_count = _populate_object_store_view(objects_fd, view, keep, 0)
+    if stores:
+        root = repository.resolve()
+        root_fd = keep(os.open(root, _DIRECTORY_FLAGS))
+        lines: list[str] = []
+        for index, store in enumerate(stores):
+            store_fd = _open_relative_store_fd(root_fd, store.relative_to(root).parts, keep)
+            alt_view = view.parent / f"alt-{index}"
+            loose_count = _populate_object_store_view(store_fd, alt_view, keep, loose_count)
+            lines.append(str(alt_view))
+        (view / "info" / "alternates").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _open_relative_store_fd(root_fd: int, parts: Sequence[str], keep: Callable[[int], int]) -> int:
+    current = root_fd
+    for part in parts:
+        current = keep(os.open(part, _DIRECTORY_FLAGS, dir_fd=current))
+    return current
+
+
+def _populate_object_store_view(
+    objects_fd: int,
+    target_view: Path,
+    keep: Callable[[int], int],
+    loose_count: int,
+) -> int:
+    (target_view / "info").mkdir(parents=True)
+    (target_view / "pack").mkdir()
     for entry in sorted(os.listdir(objects_fd)):
         if entry == "pack":
             pack_fd = keep(os.open("pack", _DIRECTORY_FLAGS, dir_fd=objects_fd))
@@ -506,7 +651,7 @@ def _build_object_view(
                         "is not a regular file.",
                         "Remove the non-file entry from .git/objects/pack.",
                     )
-                os.symlink(f"/proc/self/fd/{file_fd}", view / "pack" / name)
+                os.symlink(f"/proc/self/fd/{file_fd}", target_view / "pack" / name)
         elif len(entry) == 2 and set(entry) <= _HEX:
             fanout_fd = keep(os.open(entry, _DIRECTORY_FLAGS, dir_fd=objects_fd))
             with os.scandir(fanout_fd) as loose:
@@ -524,11 +669,14 @@ def _build_object_view(
                             "loose object, so Git could read another repository's data.",
                             "Replace the symlink with the real object file or run `git gc`.",
                         )
-            os.symlink(f"/proc/self/fd/{fanout_fd}", view / entry)
-    if stores:
-        # Alternate stores inside the repository are opened by their resolved path.
-        lines = [f"/proc/self/fd/{keep(os.open(store, _DIRECTORY_FLAGS))}" for store in stores]
-        (view / "info" / "alternates").write_text("\n".join(lines) + "\n", encoding="utf-8")
+                    if not item.is_file(follow_symlinks=False):
+                        raise _git_denial(
+                            "The approved repository's .git/objects contains a loose object "
+                            "that is not a regular file.",
+                            "Remove the non-file entry from .git/objects.",
+                        )
+            os.symlink(f"/proc/self/fd/{fanout_fd}", target_view / entry)
+    return loose_count
 
 
 def _git_dir_changed() -> ToolboxError:
@@ -538,11 +686,11 @@ def _git_dir_changed() -> ToolboxError:
     )
 
 
-def _git_dir_fingerprint(git_dir: Path) -> tuple[object, ...]:
+def _git_dir_fingerprint(git_dir: Path, stores: Sequence[Path] = ()) -> tuple[object, ...]:
     """Identify .git and every directory Git reads objects or refs from, plus redirect files.
 
-    Directory mtimes are included: renaming, swapping, or creating an entry inside a
-    directory changes its mtime even when the entry is later swapped back.
+    Directory mtimes and ctimes are included: renaming, swapping, or creating an entry inside a
+    directory updates its timestamps (and ctime cannot be rolled back with os.utime).
     """
 
     parts: list[object] = []
@@ -557,34 +705,45 @@ def _git_dir_fingerprint(git_dir: Path) -> tuple[object, ...]:
             # Seen mid-swap: never run Git (or return its output) while any link is present.
             raise _git_dir_changed()
         identity = (info.st_dev, info.st_ino, info.st_mode)
-        parts.append((str(path), identity + ((info.st_mtime_ns,) if with_mtime else ())))
+        times = (info.st_mtime_ns, info.st_ctime_ns) if with_mtime else ()
+        parts.append((str(path), identity + times))
 
     # .git's own mtime changes when Git takes index.lock, so only its identity is pinned.
     stamp(git_dir, with_mtime=False)
-    objects = git_dir / "objects"
-    stamp(objects)
-    try:
-        names = sorted(os.listdir(objects))
-    except OSError:
-        names = []
-    for name in names:
-        stamp(objects / name)
-    for top in (git_dir / "refs", objects / "info", objects / "pack"):
-        stamp(top)
-        for directory, subdirectories, filenames in os.walk(top, followlinks=False):
-            for item in sorted((*subdirectories, *filenames)):
-                stamp(Path(directory) / item)
-    for path in (
+    all_stores = (git_dir / "objects", *stores)
+    for store in all_stores:
+        stamp(store)
+        try:
+            names = sorted(os.listdir(store))
+        except OSError:
+            names = []
+        for name in names:
+            stamp(store / name)
+        for top in (store / "info", store / "pack"):
+            stamp(top)
+            for directory, subdirectories, filenames in os.walk(top, followlinks=False):
+                for item in sorted((*subdirectories, *filenames)):
+                    stamp(Path(directory) / item)
+    refs = git_dir / "refs"
+    stamp(refs)
+    for directory, subdirectories, filenames in os.walk(refs, followlinks=False):
+        for item in sorted((*subdirectories, *filenames)):
+            stamp(Path(directory) / item)
+    metadata_files = [
         git_dir / "commondir",
         git_dir / "packed-refs",
         git_dir / "HEAD",
-        objects / "info" / "alternates",
-        objects / "info" / "http-alternates",
-    ):
+    ]
+    for store in all_stores:
+        metadata_files.append(store / "info" / "alternates")
+        metadata_files.append(store / "info" / "http-alternates")
+    for path in metadata_files:
         try:
-            parts.append(path.read_bytes())
-        except OSError:
+            parts.append(_read_regular_git_file(path))
+        except FileNotFoundError:
             parts.append(None)
+        except OSError as error:
+            raise _git_dir_changed() from error
     return tuple(parts)
 
 

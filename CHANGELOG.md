@@ -35,13 +35,19 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
   links, closing the race where `objects/pack` was swapped for a symlink while
   Git ran. The full containment check now runs once per call; before and after
   exec a cheap fingerprint of object and ref directories must still match, and
-  the cost does not grow with the number of packs. Accepted risks (hardlinked packs or objects, and alternate
-  stores inside the repository) are documented in the security model.
-- A symlinked loose object anywhere under `.git/objects/<hh>/` is refused, and
-  repositories with more than 50,000 loose objects are refused with a
-  "run `git gc`" message. Anything in `objects/pack` that is not a regular file
-  (for example a FIFO) is refused; pack entries are opened non-blocking, so such
-  a file can no longer hang the server.
+  the cost does not grow with the number of packs. In-repository alternate
+  object stores receive the same symlink, loose-object, and pack checks and get
+  their own descriptor-pinned private views, and the `.git` directory
+  fingerprint includes `st_ctime_ns` so `os.utime()` cannot mask a mid-run swap.
+  The remaining accepted risk (hardlinked packs or objects) is documented in the
+  security model.
+- A symlinked or non-regular loose object anywhere under `.git/objects/<hh>/`
+  (or an in-repository alternate store) is refused, and repositories with more
+  than 50,000 loose objects across all stores are refused with a "run `git gc`"
+  message. Non-regular files (such as FIFOs) in `.git` metadata (`HEAD`,
+  `packed-refs`, `config`, `index`, `objects/info/alternates`), `refs`, or
+  `objects/pack` are refused and metadata files are opened non-blocking, so a
+  planted FIFO can no longer hang the server.
 - **Git tools are now Linux-only.** On macOS and Windows they refuse with
   `UNSUPPORTED_OPERATION` and never start Git, because there a `.git` folder
   swapped and quickly swapped back while Git runs could go unnoticed and leak

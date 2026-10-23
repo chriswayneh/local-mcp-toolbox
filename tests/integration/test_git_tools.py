@@ -761,12 +761,19 @@ def test_pack_swapped_after_checks_is_not_read(
     real_run = handlers.subprocess.run
 
     objects = pack.parent
+    real_lstat = handlers.os.lstat
+    saved_stat = real_lstat(objects)
+
+    def freeze_objects_stat(path: Path):  # type: ignore[no-untyped-def]
+        st = real_lstat(path)
+        if Path(path) == objects and not pack.is_symlink():
+            return saved_stat
+        return st
 
     def swap_then_run(*args, **kwargs):  # type: ignore[no-untyped-def]
         # Deterministically lose the race: every check has passed, pack is swapped for a link
-        # while Git runs, then swapped back and the directory times restored so the checks
-        # after exec cannot see it happened.
-        times = os.stat(objects)
+        # while Git runs, then swapped back and the directory stat frozen so the post-exec
+        # fingerprint check cannot see it happened; only the pinned object view stops the leak.
         pack.rename(tmp_path / "parked-pack")
         pack.symlink_to(outside / ".git" / "objects" / "pack", target_is_directory=True)
         try:
@@ -774,8 +781,8 @@ def test_pack_swapped_after_checks_is_not_read(
         finally:
             pack.unlink()
             (tmp_path / "parked-pack").rename(pack)
-            os.utime(objects, ns=(times.st_atime_ns, times.st_mtime_ns))
 
+    monkeypatch.setattr(handlers.os, "lstat", freeze_objects_stat)
     monkeypatch.setattr(handlers.subprocess, "run", swap_then_run)
     server = _status_server(tmp_path, git_repository)
 
@@ -845,3 +852,227 @@ def test_fifo_in_pack_directory_is_refused_without_hanging(
     assert "not a regular file" in text
     after = set(Path(tempfile.gettempdir()).glob("local-mcp-toolbox-git-objects-*"))
     assert after <= before, "private object view was left behind"
+
+
+def test_in_repo_alternate_store_with_symlinked_fanout_is_refused(
+    tmp_path: Path, git_repository: Path
+) -> None:
+    outside = _outside_repository(tmp_path)
+    _git(outside, "commit", "--allow-empty", "-q", "-m", "OUTSIDE_ALT_SECRET_999")
+    secret = _git_output(outside, "rev-parse", "HEAD")
+    alt_store = git_repository / "alt_store"
+    alt_store.mkdir()
+    _write_alternates(git_repository / ".git" / "objects", "../../alt_store\n")
+    for sha in {secret, *_git_output(outside, "rev-list", "--objects", "--all").split()}:
+        if len(sha) == 40 and not (alt_store / sha[:2]).exists():
+            _symlink_or_skip(alt_store / sha[:2], outside / ".git" / "objects" / sha[:2])
+    branch = _git_output(git_repository, "symbolic-ref", "--short", "HEAD")
+    (git_repository / ".git" / "refs" / "heads" / branch).write_text(secret + "\n", "utf-8")
+    assert "OUTSIDE_ALT_SECRET_999" in _git_output(git_repository, "log", "-1", "--format=%s")
+
+    _assert_every_git_tool_refused(tmp_path, git_repository)
+    text = _refusal_text(tmp_path, git_repository)
+    assert "contains a symlink" in text and "OUTSIDE_ALT_SECRET_999" not in text
+
+
+def test_in_repo_alternate_store_with_symlinked_loose_object_is_refused(
+    tmp_path: Path, git_repository: Path
+) -> None:
+    outside = _outside_repository(tmp_path)
+    _git(outside, "commit", "--allow-empty", "-q", "-m", "OUTSIDE_ALT_SECRET_999")
+    secret = _git_output(outside, "rev-parse", "HEAD")
+    alt_store = git_repository / "alt_store"
+    alt_store.mkdir()
+    _write_alternates(git_repository / ".git" / "objects", "../../alt_store\n")
+    for sha in {secret, *_git_output(outside, "rev-list", "--objects", "--all").split()}:
+        if len(sha) != 40:
+            continue
+        source = outside / ".git" / "objects" / sha[:2] / sha[2:]
+        if not source.exists():
+            continue
+        (alt_store / sha[:2]).mkdir(exist_ok=True)
+        target = alt_store / sha[:2] / sha[2:]
+        if not target.exists():
+            _symlink_or_skip(target, source)
+    (git_repository / ".git" / "refs" / "heads" / "evil").write_text(secret + "\n", "utf-8")
+    assert "OUTSIDE_ALT_SECRET_999" in _git_output(
+        git_repository, "log", "-1", "--format=%s", "evil"
+    )
+
+    _assert_every_git_tool_refused(tmp_path, git_repository)
+    text = _refusal_text(tmp_path, git_repository)
+    assert "symlinked loose object" in text and "OUTSIDE_ALT_SECRET_999" not in text
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="FIFOs are POSIX-only")
+def test_in_repo_alternate_store_with_fifo_in_pack_is_refused(
+    tmp_path: Path, git_repository: Path
+) -> None:
+    import tempfile
+
+    alt_store = git_repository / "alt_store"
+    (alt_store / "pack").mkdir(parents=True)
+    os.mkfifo(alt_store / "pack" / "pack-trap.pack")
+    _write_alternates(git_repository / ".git" / "objects", "../../alt_store\n")
+    before = set(Path(tempfile.gettempdir()).glob("local-mcp-toolbox-git-objects-*"))
+
+    started = time.perf_counter()
+    _assert_every_git_tool_refused(tmp_path, git_repository)
+    text = _refusal_text(tmp_path, git_repository)
+    assert time.perf_counter() - started < 2.0
+    assert "not a regular file" in text
+    after = set(Path(tempfile.gettempdir()).glob("local-mcp-toolbox-git-objects-*"))
+    assert after <= before, "private object view was left behind"
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="FIFOs are POSIX-only")
+@pytest.mark.parametrize(
+    "relative_fifo",
+    [
+        "HEAD",
+        "packed-refs",
+        "config",
+        "objects/info/alternates",
+        "objects/ab/0123456789abcdef0123456789abcdef012345",
+        "refs/heads/fifo-ref",
+    ],
+)
+def test_fifo_in_git_metadata_or_loose_objects_is_refused_without_hanging(
+    tmp_path: Path, git_repository: Path, relative_fifo: str
+) -> None:
+    import signal
+    import tempfile
+
+    target = git_repository / ".git" / relative_fifo
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists():
+        target.unlink()
+    os.mkfifo(target)
+    before = set(Path(tempfile.gettempdir()).glob("local-mcp-toolbox-git-objects-*"))
+
+    def on_alarm(_signum: int, _frame: object) -> None:
+        raise TimeoutError(f"Blocked opening FIFO at {relative_fifo}")
+
+    previous = signal.signal(signal.SIGALRM, on_alarm)
+    signal.alarm(2)
+    try:
+        started = time.perf_counter()
+        text = _refusal_text(tmp_path, git_repository)
+        assert time.perf_counter() - started < 2.0
+        assert "not a regular file" in text
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
+    after = set(Path(tempfile.gettempdir()).glob("local-mcp-toolbox-git-objects-*"))
+    assert after <= before, "private object view was left behind"
+
+
+def test_git_dir_fingerprint_includes_ctime_ns(
+    git_repository: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mcp_toolbox.tools.git import handlers
+
+    git_dir = git_repository / ".git"
+    baseline = handlers._git_dir_fingerprint(git_dir)
+    real_lstat = handlers.os.lstat
+    objects_path = git_dir / "objects"
+
+    def bumped_ctime_lstat(path: Path):  # type: ignore[no-untyped-def]
+        st = real_lstat(path)
+        if Path(path) == objects_path:
+            # Same st_dev, st_ino, st_mode, and st_mtime_ns (as after os.utime), but newer ctime.
+            values = list(st)
+            return os.stat_result(
+                values,
+                {
+                    "st_atime_ns": st.st_atime_ns,
+                    "st_mtime_ns": st.st_mtime_ns,
+                    "st_ctime_ns": st.st_ctime_ns + 1_000_000,
+                },
+            )
+        return st
+
+    monkeypatch.setattr(handlers.os, "lstat", bumped_ctime_lstat)
+    assert handlers._git_dir_fingerprint(git_dir) != baseline
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="FIFOs are POSIX-only")
+def test_packed_refs_fifo_with_one_second_timeout_refuses_immediately(
+    tmp_path: Path, git_repository: Path
+) -> None:
+    from mcp_toolbox.config.settings import LimitSettings
+
+    packed_refs = git_repository / ".git" / "packed-refs"
+    if packed_refs.exists():
+        packed_refs.unlink()
+    os.mkfifo(packed_refs)
+    server = create_server(
+        build_runtime(
+            ToolboxSettings(
+                profile=PermissionProfile.STANDARD,
+                filesystem=FilesystemSettings(approved_roots=[tmp_path]),
+                integrations=IntegrationSettings(git=True),
+                git=GitSettings(approved_repositories=[git_repository]),
+                limits=LimitSettings(timeout_seconds=1),
+                audit=AuditSettings(path=tmp_path / "audit" / "events.jsonl"),
+            )
+        )
+    )
+
+    async def scenario() -> None:
+        async with Client(server) as client:
+            started = time.perf_counter()
+            result = await client.call_tool(
+                "git_recent_commits", {"repository": str(git_repository)}
+            )
+            assert time.perf_counter() - started < 1.0
+            assert result.is_error is True
+            assert "not a regular file" in str(result.content) + str(result.structured_content)
+
+    asyncio.run(scenario())
+
+
+def test_in_repo_alternate_store_objects_are_served_through_verified_private_view(
+    tmp_path: Path, git_repository: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mcp_toolbox.tools.git import handlers
+
+    alt_repo = tmp_path / "alt-work"
+    alt_repo.mkdir()
+    _git(alt_repo, "init", "-b", "main")
+    _git(alt_repo, "config", "user.name", "Alt Author")
+    _git(alt_repo, "config", "user.email", "alt@example.test")
+    (alt_repo / "note.txt").write_text("alt content\n", encoding="utf-8")
+    _git(alt_repo, "add", "note.txt")
+    _git(alt_repo, "commit", "-q", "-m", "ALT_IN_REPO_COMMIT")
+    alt_head = _git_output(alt_repo, "rev-parse", "HEAD")
+
+    alt_store = git_repository / "alt_store"
+    shutil.copytree(alt_repo / ".git" / "objects", alt_store)
+    _write_alternates(git_repository / ".git" / "objects", "../../alt_store\n")
+    branch = _git_output(git_repository, "symbolic-ref", "--short", "HEAD")
+    (git_repository / ".git" / "refs" / "heads" / branch).write_text(alt_head + "\n", "utf-8")
+
+    real_run = handlers.subprocess.run
+    seen_alternates: list[str] = []
+
+    def inspect_view_then_run(command, *args, **kwargs):  # type: ignore[no-untyped-def]
+        obj_dir = Path(kwargs["env"]["GIT_OBJECT_DIRECTORY"])
+        seen_alternates.extend(
+            (obj_dir / "info" / "alternates").read_text(encoding="utf-8").splitlines()
+        )
+        return real_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(handlers.subprocess, "run", inspect_view_then_run)
+    server = _status_server(tmp_path, git_repository)
+
+    async def scenario() -> None:
+        async with Client(server) as client:
+            result = await client.call_tool(
+                "git_recent_commits", {"repository": str(git_repository)}
+            )
+            assert result.is_error is False
+            assert "ALT_IN_REPO_COMMIT" in str(result.structured_content)
+
+    asyncio.run(scenario())
+    assert seen_alternates and all("alt-0" in line for line in seen_alternates)
