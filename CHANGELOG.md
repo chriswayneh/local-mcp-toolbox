@@ -5,6 +5,8 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-23
+
 - Add `security_audit_agent_configs` and the `local-mcp-toolbox audit-agent-configs`
   CLI command to statically audit agent instruction files (`SKILL.md`, `AGENTS.md`,
   `CLAUDE.md`, `.cursorrules`, `.github/copilot-instructions.md`, and related rules)
@@ -253,6 +255,9 @@ First stable release of the secure, local-first, read-only MCP toolbox.
   represented through structured contracts.
 - GitHub private vulnerability reporting is enabled for confidential reports.
 
+[Unreleased]: https://github.com/chriswayneh/local-mcp-toolbox/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/chriswayneh/local-mcp-toolbox/compare/v1.5.3...v1.6.0
+[1.5.3]: https://github.com/chriswayneh/local-mcp-toolbox/compare/v1.5.2...v1.5.3
 [1.5.1]: https://github.com/chriswayneh/local-mcp-toolbox/compare/v1.5.0...v1.5.1
 [1.5.2]: https://github.com/chriswayneh/local-mcp-toolbox/compare/v1.5.1...v1.5.2
 [1.5.0]: https://github.com/chriswayneh/local-mcp-toolbox/compare/v1.0.0...v1.5.0

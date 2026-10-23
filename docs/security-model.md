@@ -123,3 +123,6 @@ and opens candidate files with `O_NONBLOCK`, accepting only single-link regular 
 within `max_file_bytes` and skipping blocked sensitive filenames. Reported snippets pass
 through central secret redaction and escape bidirectional, zero-width, Unicode tag, and
 C0/C1 control characters so terminal and MCP clients never render raw control sequences.
+The full list of rule IDs is in the [tool catalog](tools.md#agent-config-audit-rules).
+CLI exit codes are `0` (nothing at or above `--fail-on`), `1` (findings at or
+above `--fail-on`), and `2` (invalid input or unreadable target).
