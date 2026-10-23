@@ -5,6 +5,15 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
 
 ## [Unreleased]
 
+- Add `security_audit_agent_configs` and the `local-mcp-toolbox audit-agent-configs`
+  CLI command to statically audit agent instruction files (`SKILL.md`, `AGENTS.md`,
+  `CLAUDE.md`, `.cursorrules`, `.github/copilot-instructions.md`, and related rules)
+  and MCP client configuration files (`.mcp.json`, `mcp.json`,
+  `claude_desktop_config.json`) across five deterministic categories:
+  `hidden_unicode`, `prompt_override`, `dangerous_execution`, `credential_or_exfil`,
+  and `mcp_config_risk`.
+- Add synthetic benign and risky agent configuration fixtures under
+  `demo/agent-configs/`.
 - `security_scan_repository` no longer reports findings for files outside the
   approved scan root or files that match a blocked pattern. Bandit follows
   symlinks on its own, so a link inside the root could pull in a file from

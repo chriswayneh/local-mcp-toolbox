@@ -71,3 +71,28 @@ def test_docker_profile_explicitly_enables_only_docker() -> None:
     assert "ports" not in proxy
     assert any(mount.startswith("/tmp:") for mount in proxy["tmpfs"])  # noqa: S108
     assert any(mount.startswith("/run:") for mount in proxy["tmpfs"])
+
+
+def test_agent_config_demo_fixtures_and_client_examples_audit_as_expected() -> None:
+    from mcp_toolbox.tools.security.agent_audit import audit_agent_configs
+    from mcp_toolbox.tools.security.models import AuditCategory
+
+    benign_report, _ = audit_agent_configs(REPOSITORY_ROOT / "demo" / "agent-configs" / "benign")
+    assert benign_report.status == "clean"
+    assert benign_report.total_findings == 0
+    assert benign_report.files_scanned == 3
+
+    examples_report, _ = audit_agent_configs(REPOSITORY_ROOT / "examples")
+    assert examples_report.status == "clean"
+    assert examples_report.total_findings == 0
+    assert examples_report.files_scanned == 3
+
+    risky_report, redactions = audit_agent_configs(
+        REPOSITORY_ROOT / "demo" / "agent-configs" / "risky"
+    )
+    assert risky_report.status == "findings_detected"
+    assert risky_report.files_scanned == 2
+    assert redactions >= 1
+    assert "synthetic-inline-credential-do-not-use" not in risky_report.model_dump_json()
+    for category in AuditCategory:
+        assert risky_report.category_counts[category.value] >= 1

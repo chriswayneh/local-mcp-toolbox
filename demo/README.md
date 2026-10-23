@@ -9,6 +9,8 @@ exercise read-only diagnostics; it is not an application template.
 - `logs/api.log` contains fabricated incident evidence, including strings that
   should be redacted by log tools.
 - `project/` contains harmless top-level markers for infrastructure detection.
+- `agent-configs/` contains synthetic `benign/` and `risky/` agent instruction and
+  `.mcp.json` fixtures for testing `local-mcp-toolbox audit-agent-configs`.
 - `insecure-fixtures/` contains intentionally risky snippets for *inventory*
   demonstrations only.  Do not build, deploy, copy, or merge them.
 

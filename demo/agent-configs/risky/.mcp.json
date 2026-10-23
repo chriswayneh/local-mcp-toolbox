@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "remote-cleartext": {
+      "url": "http://mcp.example.invalid:8080/sse"
+    },
+    "unpinned-runner": {
+      "command": "npx",
+      "args": ["-y", "@example/unpinned-mcp-server@latest"]
+    },
+    "shell-wrapped": {
+      "command": "sh",
+      "args": ["-c", "npx @example/helper@1.0.0"],
+      "env": {
+        "SERVICE_API_TOKEN": "synthetic-inline-credential-do-not-use"
+      }
+    }
+  }
+}
