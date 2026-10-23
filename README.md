@@ -10,7 +10,7 @@
 
 A local [Model Context Protocol](https://modelcontextprotocol.io/) server for checking files, Git changes, application logs, container health, and Python environments. You choose what it can inspect. Every request is authorized, sensitive output is redacted, results are bounded, and activity is audited.
 
-**Current release:** [v1.5.3](https://github.com/chriswayneh/local-mcp-toolbox/releases/tag/v1.5.3). The v1.5 scope is complete. See the [release contract and acceptance record](docs/release-1.5.md).
+**Current release:** [v1.6.0](https://github.com/chriswayneh/local-mcp-toolbox/releases/tag/v1.6.0). It adds a static auditor for agent instruction files, skills, prompts, and MCP configs. See the [changelog](CHANGELOG.md) and the [v1.5 release contract](docs/release-1.5.md).
 
 </div>
 
@@ -57,6 +57,42 @@ For a manual startup check, run `local-mcp-toolbox serve --config config/restric
 
 The default profile has no approved file roots or optional integrations. Start by asking your client to call `toolbox_server_status`. Then follow [getting started](docs/getting-started.md) to grant only the access you need. The install above includes development and Docker support; Docker itself is optional and remains disabled until configured.
 
+### Try the agent config auditor
+
+You can check agent instruction files and MCP configs right away, with no config file and no server running. The repository ships two small synthetic examples: `demo/agent-configs/benign` (should come back clean) and `demo/agent-configs/risky` (full of planted problems).
+
+```bash
+.venv/bin/local-mcp-toolbox audit-agent-configs demo/agent-configs/benign
+.venv/bin/local-mcp-toolbox audit-agent-configs demo/agent-configs/risky
+```
+
+On Windows use `.\.venv\Scripts\local-mcp-toolbox` instead. The risky example prints one line per finding, for example:
+
+```text
+status: findings_detected (files_scanned=2, withheld_files=0, total_findings=14, high=13, medium=1, low=0)
+[HIGH] AGENT-MCP-002 (mcp_config_risk) .mcp.json:4 - Cleartext remote MCP server URL
+[HIGH] AGENT-EXEC-001 (dangerous_execution) SKILL.md:6 - Piped remote command execution snippet
+```
+
+Useful options:
+
+- `--json` prints a machine-readable report (findings, counts by severity and category, and scan stats) for scripts and CI.
+- `--fail-on low|medium|high|none` sets the lowest severity that makes the command fail. The default is `low`, so any finding fails. `none` always exits 0 when the scan itself worked.
+
+```bash
+.venv/bin/local-mcp-toolbox audit-agent-configs demo/agent-configs/risky --json --fail-on high
+```
+
+Exit codes, so you can use it as a CI gate:
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Scan finished and nothing reached the `--fail-on` level |
+| `1` | Scan finished and at least one finding is at or above the `--fail-on` level |
+| `2` | Bad input, such as a missing path, an unreadable target, or an invalid option |
+
+The auditor only reads files. It never runs them, never starts a shell, and never contacts the network. Every rule ID it can report is listed in the [tool catalog](docs/tools.md#agent-config-audit-rules).
+
 ## Features
 
 ### What You Get
@@ -70,6 +106,7 @@ The default profile has no approved file roots or optional integrations. Start b
 | Metrics | Aggregate request outcomes and latency | In-process counters only; no arguments, responses, identifiers, or secrets |
 | Docker | Opt-in container metadata, health, and bounded logs | Official SDK only; no lifecycle, exec, mount, environment, or command access |
 | Logs | Tails, literal search, and deterministic error grouping | Dedicated approved roots, output limits, and central redaction |
+| Agent config audit | Static check of `AGENTS.md`, `CLAUDE.md`, `SKILL.md`, `.cursorrules`, prompt files, and `.mcp.json` style configs for hidden Unicode, instruction overrides, risky commands, credential or exfiltration references, and risky MCP server settings (18 rule IDs). Runs as the `security_audit_agent_configs` MCP tool or the `local-mcp-toolbox audit-agent-configs` CLI command | Reads files only; never executes them, starts a shell, or uses the network; secrets in snippets are redacted and invisible characters are escaped |
 | Security | Bandit repository scan, scanner inventory, and static auditing of agent instructions, skills, prompts, and MCP configs | Fixed Bandit invocation on a private snapshot; static in-process agent config inspection with `O_NOFOLLOW`, single-link regular-file checks, secret redaction, and control-character escaping |
 | Infrastructure | Project-type detection and top-level configuration inventory | Separate approved roots; no recursive content inspection |
 | Incidents | Timestamped evidence and deterministic summaries | Read-only, bounded observations: never root-cause claims |
