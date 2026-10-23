@@ -1371,7 +1371,6 @@ def test_git_diff_summary_red_team_touch_and_chmod(tmp_path: Path, git_repositor
 
 
 def test_git_diff_summary_reports_merge_conflict_once(tmp_path: Path, git_repository: Path) -> None:
-    _git(git_repository, "checkout", "--", "README.md")
     _commit_files(git_repository, {"m.txt": b"base\n"})
     _git(git_repository, "checkout", "-b", "other")
     _commit_files(git_repository, {"m.txt": b"other\n"})
@@ -1381,7 +1380,7 @@ def test_git_diff_summary_reports_merge_conflict_once(tmp_path: Path, git_reposi
         ["git", "-C", str(git_repository), "merge", "other"], check=False, capture_output=True
     )
 
-    assert _diff_paths(tmp_path, git_repository) == ["m.txt"]
+    assert _diff_paths(tmp_path, git_repository) == ["README.md", "m.txt"]
 
 
 @_POSIX_ONLY
