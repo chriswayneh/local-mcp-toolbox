@@ -155,6 +155,10 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
   before or after redaction are stored as a deterministic `sha256:` digest, and
   dictionary keys in audit summaries and `Redactor.redact_value` are redacted
   and counted alongside values.
+- Docker container logs are now redacted before they are cut to the size limit.
+  Before, the logs were cut first, which could split a token in half at the
+  cut, and neither half was recognized as a secret. Now the whole tail is
+  redacted first and the cleaned text is trimmed afterwards.
 
 ## [1.5.3] - 2026-10-04
 
