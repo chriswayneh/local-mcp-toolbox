@@ -59,6 +59,54 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
   and `password='[REDACTED_X]''[REDACTED_X]':hunter22` are redacted.
   Pathological long lines no longer take seconds to redact (several patterns,
   the XML tag rule, and the trailing-marker trim were made linear).
+- Git tools now pin Git to the approved repository: they pass explicit
+  `--git-dir=<repo>/.git` and `--work-tree=<repo>`, set
+  `GIT_CEILING_DIRECTORIES`, and refuse a repository whose `.git` is a file
+  (`gitdir: ...`) or a symlink. Before, a repository-local `core.worktree` or a
+  `.git` file could point Git at a directory or repository outside the
+  allowlist. Linked worktrees and submodule checkouts can no longer be approved
+  directly; approve the main working tree instead.
+- Git tools also refuse a `.git` directory that contains a `commondir` file, or
+  whose `objects/info/alternates` points outside the approved repository, since
+  either makes Git read refs, objects, or config from somewhere else.
+- The alternates check follows the whole alternates chain, including relative
+  entries, so a store inside the repository cannot forward to one outside.
+  Every refusal now names its reason (symlinked `.git`, `gitdir:` file from a
+  linked worktree or submodule checkout, `commondir`, or outside alternates such
+  as `git clone --shared`/`--reference`).
+- A symlink at `.git/objects`, `refs`, `HEAD`, `config`, `packed-refs`, `logs`,
+  `info`, or `worktrees` is refused, and `objects` and `refs` must resolve
+  inside the repository. The containment check runs again right before Git
+  starts and after it exits, and if the `.git` directory, its object or ref
+  store, `commondir`, or alternates changed in between, the output is discarded
+  and the call is refused.
+- A symlink anywhere under `.git/objects` or `.git/refs` (for example a loose
+  object fan-out directory or `objects/pack`) is refused. `http-alternates` and a
+  `GIT_ALTERNATE_OBJECT_DIRECTORIES` setting in the server environment each get
+  their own refusal reason.
+- Git runs with `GIT_COMMON_DIR` and `GIT_OBJECT_DIRECTORY` pinned. On Linux it
+  reads objects through a private view of descriptors opened without following
+  links, closing the race where `objects/pack` was swapped for a symlink while
+  Git ran. The full containment check now runs once per call; before and after
+  exec a cheap fingerprint of object and ref directories must still match, and
+  the cost does not grow with the number of packs. In-repository alternate
+  object stores receive the same symlink, loose-object, and pack checks and get
+  their own descriptor-pinned private views, and the `.git` directory
+  fingerprint includes `st_ctime_ns` so `os.utime()` cannot mask a mid-run swap.
+  The remaining accepted risk (hardlinked packs or objects) is documented in the
+  security model.
+- A symlinked or non-regular loose object anywhere under `.git/objects/<hh>/`
+  (or an in-repository alternate store) is refused, and repositories with more
+  than 50,000 loose objects across all stores are refused with a "run `git gc`"
+  message. Non-regular files (such as FIFOs) in `.git` metadata (`HEAD`,
+  `packed-refs`, `config`, `index`, `objects/info/alternates`), `refs`, or
+  `objects/pack` are refused and metadata files are opened non-blocking, so a
+  planted FIFO can no longer hang the server.
+- **Git tools are now Linux-only.** On macOS and Windows they refuse with
+  `UNSUPPORTED_OPERATION` and never start Git, because there a `.git` folder
+  swapped and quickly swapped back while Git runs could go unnoticed and leak
+  another repository's data. Run the toolbox in the Linux container to use them
+  on those hosts. Tracked in [#44](https://github.com/chriswayneh/local-mcp-toolbox/issues/44).
 - `security_scan_repository` no longer reports findings for files outside the
   approved scan root or files that match a blocked pattern. Bandit follows
   symlinks on its own, so a link inside the root could pull in a file from

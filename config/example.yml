@@ -17,6 +17,9 @@ integrations:
   environment: false
   external_network: false
 git:
+  # Each entry must be a main working tree with its own .git directory. Linked worktrees,
+  # submodule checkouts, and clones that borrow objects from outside (git clone --shared
+  # or --reference) are refused.
   approved_repositories: []
 github:
   approved_repositories: []
