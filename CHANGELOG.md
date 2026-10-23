@@ -5,6 +5,26 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
 
 ## [Unreleased]
 
+- `security_scan_repository` no longer reports findings for files outside the
+  approved scan root or files that match a blocked pattern. Bandit follows
+  symlinks on its own, so a link inside the root could pull in a file from
+  elsewhere, and the result used to show it by file name. Those findings are
+  now left out, and the response has a `withheld_findings` count so you can
+  see that some were skipped.
+- Bandit now scans a private copy of only the `.py`/`.pyw` files that are
+  authorized when the scan starts, instead of the live directory. Before, the
+  path check ran after Bandit had read the files, so a symlink swapped during or
+  after the scan could slip an outside file's finding through, and a link
+  retargeted between checks could make the whole scan return an error. Findings
+  are now matched back to the copied files, so neither can happen.
+- The security scan snapshot also refuses a symlink whose own name matches a
+  blocked pattern, even when it points at an allowed file.
+- The security scan snapshot now opens every path component without following
+  symlinks (POSIX), so a directory swapped between check and open cannot leak
+  an outside file; Windows keeps a resolve-and-verify fallback. FIFOs, devices
+  and hard-linked files are skipped (a FIFO no longer hangs the scan), files
+  over 5 MB or past a 50 MB total are withheld, and the response reports
+  `withheld_files` and `snapshot_truncated`.
 - Git tools no longer run programs that a repository's own settings ask for.
   A repository could set `core.fsmonitor`, hooks, an external diff tool, or a `.gitattributes` filter
   driver (`filter.*.clean`/`process`) in
