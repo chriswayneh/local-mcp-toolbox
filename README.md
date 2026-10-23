@@ -139,6 +139,24 @@ Teams often adopt shared instruction files (`AGENTS.md`, `CLAUDE.md`, `SKILL.md`
 
 The auditor checks five deterministic categories (`hidden_unicode`, `prompt_override`, `dangerous_execution`, `credential_or_exfil`, and `mcp_config_risk`), redacts secrets in snippets, escapes invisible or bidirectional control characters, and exits with code `0` when clean, `1` when findings meet or exceed `--fail-on`, and `2` on invalid input or unreadable targets. The same check is available to MCP clients as `security_audit_agent_configs` when `security_scanners` is enabled.
 
+### Why Audit Agent Configs?
+Prompts, agent skills, and MCP server entries are easy to share, so they often move from a blog, a chat thread, or another repository straight into an agent's context with no review. To an agent, though, these plain text and JSON files act like code: they can tell it what to run, what to read, and which servers to trust. Endpoint security and EDR products generally do not inspect their contents, so a risky instruction can go unnoticed until the agent acts on it.
+
+`audit-agent-configs` gives you a quick local check before you adopt one. Its 18 rules flag:
+
+- **Hidden text:** bidirectional controls, invisible tag characters, zero-width and control characters, and directives tucked inside HTML comments.
+- **Instruction overrides:** text telling the agent to ignore earlier instructions, hide actions from the user, or skip confirmation and safety checks.
+- **Risky execution:** downloads piped into a shell, decoded payloads that are then run, and network-fetching Python or Node one-liners.
+- **Credential access and exfiltration:** references to `.env` files, SSH keys, cloud credential files, or metadata endpoints, plus webhook collectors and uploads to outside hosts.
+- **Untrusted MCP servers:** plain-HTTP or other remote endpoints, unpinned packages, shell-wrapped commands, code-injecting environment variables, inline secrets, and malformed configs.
+
+It is pattern based and runs only when you call it; nothing is checked automatically, and a clean result is not proof that a file is safe. To make it routine, run it in CI or a Git pre-commit hook. It takes one target path and scans directories recursively:
+
+```bash
+# CI step or .git/hooks/pre-commit: fails (exit 1) on any high-severity finding
+local-mcp-toolbox audit-agent-configs . --fail-on high
+```
+
 ### Connect a Client
 The repository includes stdio configuration templates for the clients below. Template parsing and the installed server's launch contract are tested; individual desktop application versions are not certified. Adding a client entry lets the client start the process: it does **not** grant the server broader permissions.
 
