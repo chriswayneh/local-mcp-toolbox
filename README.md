@@ -271,7 +271,7 @@ See [ROADMAP.md](ROADMAP.md) for planned phases and [CHANGELOG.md](CHANGELOG.md)
 ### Project Status
 Version 1.5 adds allowlisted GitHub inspection, content-free runtime metrics, a static [Python environment auditor](docs/environment-auditor.md), authenticated loopback HTTP, crash-safe audit rotation, and hardened release controls. Kubernetes inspection and generation features were removed after security review because their effective behavior could not satisfy the inspection-only contract.
 
-The v1.5 feature scope is complete. Version 1.5.2 closes default-parameter and container setup defects without adding capabilities. Support is limited to the local inspection contract in the [acceptance record](docs/release-1.5.md), not a hosted service, multi-user security boundary, or production availability guarantee. The package classifier Production/Stable means that local contract, not a hosted production service. Versions 2 through 4 are optional proposals, not unfinished release requirements.
+Version 1.6.0 is the current release. It adds the read-only agent config auditor (`security_audit_agent_configs` and `local-mcp-toolbox audit-agent-configs`) and tightens secret redaction, while keeping the v1.5 inspection-only contract. Support is limited to the local inspection contract in the [acceptance record](docs/release-1.5.md), not a hosted service, multi-user security boundary, or production availability guarantee. The package classifier Production/Stable means that local contract, not a hosted production service. Versions 2 through 4 are optional proposals, not unfinished release requirements.
 
 ## Security
 
