@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess  # nosec B404
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -80,7 +81,7 @@ class GitRunner:
                 encoding="utf-8",
                 errors="replace",
                 timeout=self._runtime.settings.limits.timeout_seconds,
-                env=_safe_git_environment(),
+                env=_safe_git_environment(overrides),
             )
         except subprocess.TimeoutExpired as error:
             raise ToolboxError(
@@ -274,11 +275,27 @@ def _filter_driver_overrides(
             "Git configuration could not be inspected safely.",
             remediation="Check the local Git installation and server permissions.",
         ) from error
+    if completed.returncode not in (0, 1):
+        raise ToolboxError(
+            ErrorCategory.PERMISSION_DENIED,
+            "Git configuration could not be validated safely.",
+            remediation="Repair the repository's .git/config before inspecting it.",
+        )
     drivers: set[str] = set()
-    for name in completed.stdout.splitlines():
-        lowered = name.strip()
-        if lowered.startswith("filter.") and lowered.count(".") >= 2:
-            drivers.add(lowered[len("filter.") : lowered.rindex(".")])
+    for raw_name in completed.stdout.splitlines():
+        line = raw_name.strip("\r\n")
+        if line.lower().startswith("filter.") and line.count(".") >= 2:
+            driver = line[len("filter.") : line.rindex(".")]
+            if _is_unsafe_filter_driver_name(driver):
+                raise ToolboxError(
+                    ErrorCategory.PERMISSION_DENIED,
+                    "The repository defines an unsafe Git filter driver name.",
+                    remediation=(
+                        "Remove filter drivers whose names contain '=' or control characters "
+                        "from .git/config."
+                    ),
+                )
+            drivers.add(driver)
     arguments: list[str] = []
     for driver in sorted(drivers):
         for key in ("clean", "smudge", "process"):
@@ -287,7 +304,37 @@ def _filter_driver_overrides(
     return arguments
 
 
-def _safe_git_environment() -> dict[str, str]:
+def _is_unsafe_filter_driver_name(driver: str) -> bool:
+    """Return True when a filter driver name is empty or contains '=' or control characters."""
+
+    return (
+        not driver or "=" in driver or any(ord(char) < 0x20 or ord(char) == 0x7F for char in driver)
+    )
+
+
+def _config_override_pairs(overrides: Sequence[str]) -> list[tuple[str, str]]:
+    """Extract (key, value) pairs from fixed overrides and any `-c key=value` arguments."""
+
+    entries: list[str] = list(_SAFE_CONFIG_OVERRIDES)
+    for index, argument in enumerate(overrides[:-1]):
+        if argument == "-c":
+            candidate = overrides[index + 1]
+            if candidate not in entries:
+                entries.append(candidate)
+        elif "=" in argument and (index == 0 or overrides[index - 1] != "-c"):
+            if argument not in entries:
+                entries.append(argument)
+    pairs: list[tuple[str, str]] = []
+    for entry in entries:
+        # Values in _SAFE_CONFIG_OVERRIDES and _filter_driver_overrides never contain '=',
+        # so rpartition('=') preserves any '=' inside a filter.<name>.<op> key.
+        key, separator, value = entry.rpartition("=")
+        if separator and key:
+            pairs.append((key, value))
+    return pairs
+
+
+def _safe_git_environment(overrides: Sequence[str] = ()) -> dict[str, str]:
     """Keep Git non-interactive, read-only, and free of user/system config injection."""
 
     environment = {"PATH": os.environ.get("PATH", ""), "GIT_TERMINAL_PROMPT": "0"}
@@ -298,6 +345,11 @@ def _safe_git_environment() -> dict[str, str]:
     environment["GIT_CONFIG_GLOBAL"] = os.devnull
     # Stop `git status` from refreshing the index or taking index.lock in the repository.
     environment["GIT_OPTIONAL_LOCKS"] = "0"
+    pairs = _config_override_pairs(overrides)
+    environment["GIT_CONFIG_COUNT"] = str(len(pairs))
+    for index, (key, value) in enumerate(pairs):
+        environment[f"GIT_CONFIG_KEY_{index}"] = key
+        environment[f"GIT_CONFIG_VALUE_{index}"] = value
     return environment
 
 

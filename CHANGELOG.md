@@ -9,9 +9,12 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
   A repository could set `core.fsmonitor`, hooks, an external diff tool, or a `.gitattributes` filter
   driver (`filter.*.clean`/`process`) in
   `.git/config`, and Git would run that program during a status check. The
-  toolbox now overrides those settings, so inspecting an untrusted repository
-  is safe. `git status` also no longer refreshes or locks the index, so the
-  repository is left exactly as it was.
+  toolbox now overrides those settings via `-c` and `GIT_CONFIG_COUNT` /
+  `GIT_CONFIG_KEY_<n>` / `GIT_CONFIG_VALUE_<n>`, and refuses repositories with
+  malformed `.git/config` or filter driver names containing `=` or control
+  characters, so inspecting an untrusted repository is safe. `git status` also
+  no longer refreshes or locks the index, so the repository is left exactly as
+  it was.
 - Recent-commit inspection passes `--no-show-signature`, so a repository that
   sets `log.showSignature` and `gpg.program` cannot make the toolbox run its
   chosen signature verifier.

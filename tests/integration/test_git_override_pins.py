@@ -205,3 +205,51 @@ def test_git_start_oserror_becomes_a_safe_error(monkeypatch, tmp_path: Path, rep
     with pytest.raises(ToolboxError) as caught:
         GitRunner(_runtime(tmp_path, repo)).run(repo, ["status"])
     assert caught.value.category is ErrorCategory.INTEGRATION_UNAVAILABLE
+
+
+@pytest.mark.parametrize(
+    "bad_stdout",
+    [
+        "filter.a=b.clean\n",
+        "filter.a\tb.clean\n",
+        "filter.a\x00b.clean\n",
+        "filter.a\x7fb.clean\n",
+        "filter..clean\n",
+    ],
+)
+def test_filter_driver_name_with_equals_or_control_chars_is_refused(
+    bad_stdout: str, monkeypatch, tmp_path: Path
+) -> None:
+    completed = subprocess.CompletedProcess([], 0, stdout=bad_stdout)
+    monkeypatch.setattr(handlers.subprocess, "run", lambda *a, **k: completed)
+    with pytest.raises(ToolboxError) as caught:
+        handlers._filter_driver_overrides("git", tmp_path, _runtime(tmp_path, tmp_path))
+    assert caught.value.category is ErrorCategory.PERMISSION_DENIED
+
+
+@pytest.mark.parametrize("returncode", [2, 128, -1])
+def test_filter_inspection_nonzero_exit_code_is_refused(
+    returncode: int, monkeypatch, tmp_path: Path
+) -> None:
+    completed = subprocess.CompletedProcess([], returncode, stdout="")
+    monkeypatch.setattr(handlers.subprocess, "run", lambda *a, **k: completed)
+    with pytest.raises(ToolboxError) as caught:
+        handlers._filter_driver_overrides("git", tmp_path, _runtime(tmp_path, tmp_path))
+    assert caught.value.category is ErrorCategory.PERMISSION_DENIED
+
+
+def test_filter_inspection_exit_code_one_means_no_filters(monkeypatch, tmp_path: Path) -> None:
+    completed = subprocess.CompletedProcess([], 1, stdout="")
+    monkeypatch.setattr(handlers.subprocess, "run", lambda *a, **k: completed)
+    assert handlers._filter_driver_overrides("git", tmp_path, _runtime(tmp_path, tmp_path)) == []
+
+
+def test_environment_carries_git_config_key_value_pairs_without_splitting_key_equals() -> None:
+    env = handlers._safe_git_environment(
+        ["-c", "filter.a=b.clean=", "-c", "filter.a=b.required=false"]
+    )
+    count = int(env["GIT_CONFIG_COUNT"])
+    env_pairs = {env[f"GIT_CONFIG_KEY_{i}"]: env[f"GIT_CONFIG_VALUE_{i}"] for i in range(count)}
+    assert env_pairs["core.fsmonitor"] == "false"
+    assert env_pairs["filter.a=b.clean"] == ""
+    assert env_pairs["filter.a=b.required"] == "false"
