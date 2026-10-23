@@ -295,18 +295,24 @@ def _filter_driver_overrides(
         line = raw_name[:-1] if raw_name.endswith("\r") else raw_name
         if not line:
             continue
-        if line.lower().startswith("filter.") and line.count(".") >= 2:
-            driver = line[len("filter.") : line.rindex(".")]
-            if _is_unsafe_filter_driver_name(driver):
-                raise ToolboxError(
-                    ErrorCategory.PERMISSION_DENIED,
-                    "The repository defines an unsafe Git filter driver name.",
-                    remediation=(
-                        "Remove filter drivers whose names contain '=' or control characters "
-                        "from .git/config."
-                    ),
-                )
-            drivers.add(driver)
+        lowered = line.lower()
+        driver = (
+            line[len("filter.") : line.rindex(".")]
+            if lowered.startswith("filter.")
+            and line.count(".") >= 2
+            and lowered.rsplit(".", 1)[-1] in ("clean", "smudge", "process")
+            else ""
+        )
+        if _is_unsafe_filter_driver_name(driver):
+            raise ToolboxError(
+                ErrorCategory.PERMISSION_DENIED,
+                "The repository defines an unsafe Git filter driver name.",
+                remediation=(
+                    "Remove filter drivers whose names contain '=' or control characters "
+                    "from .git/config."
+                ),
+            )
+        drivers.add(driver)
     arguments: list[str] = []
     for driver in sorted(drivers):
         for key in ("clean", "smudge", "process"):

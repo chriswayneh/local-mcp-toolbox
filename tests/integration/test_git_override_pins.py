@@ -186,8 +186,8 @@ def test_process_only_filter_never_runs_and_does_not_fail_status(
     assert not marker.exists()
 
 
-def test_only_well_formed_filter_names_become_drivers(monkeypatch, tmp_path: Path) -> None:
-    completed = subprocess.CompletedProcess([], 0, stdout="bogus\nfilter.x\nfilter.ok.clean\n")
+def test_crlf_and_blank_lines_in_filter_names_are_accepted(monkeypatch, tmp_path: Path) -> None:
+    completed = subprocess.CompletedProcess([], 0, stdout="\r\nfilter.ok.clean\r\n\n")
     monkeypatch.setattr(handlers.subprocess, "run", lambda *a, **k: completed)
     pairs = _pairs(handlers._filter_driver_overrides("git", tmp_path, _runtime(tmp_path, tmp_path)))
     assert pairs == [
@@ -234,6 +234,10 @@ def test_git_start_oserror_becomes_a_safe_error(monkeypatch, tmp_path: Path, rep
         "filter.foo\x1dbar.clean\n",
         "filter.a.clean\x1efilter.b.clean\n",
         "filter.a.clean\rfilter.b.clean\n",
+        "filter.foo\nbar.clean\n",
+        "bogus\n",
+        "filter.x\n",
+        "filter.ok.required\n",
         "filter..clean\n",
     ],
 )
