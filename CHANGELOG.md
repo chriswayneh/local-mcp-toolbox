@@ -5,10 +5,12 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
 
 ## [Unreleased]
 
-- A very long request id or tool name from a client no longer breaks the
-  request or skips the audit record. Ids and tool names longer than the audit
-  field allows are stored as a short `sha256:` digest. The same id always gets
-  the same digest, so you can still match related audit lines.
+- Over-long or post-redaction-expanded audit identifiers (`request_id`,
+  `tool_name`, `tool_module`, `client_identifier`) and argument keys no longer
+  break the request or drop the audit record; values exceeding their field limit
+  before or after redaction are stored as a deterministic `sha256:` digest, and
+  dictionary keys in audit summaries and `Redactor.redact_value` are redacted
+  and counted alongside values.
 
 ## [1.5.3] - 2026-10-04
 

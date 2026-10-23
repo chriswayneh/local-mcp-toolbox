@@ -9,7 +9,7 @@ from typing import Any
 from mcp.server.context import HandlerResult, ServerRequestContext
 from pydantic import ValidationError
 
-from mcp_toolbox.audit import AuditEvent, AuditTimer, JsonlAuditLogger
+from mcp_toolbox.audit import AuditEvent, AuditTimer, JsonlAuditLogger, bounded_identifier
 from mcp_toolbox.metrics import MetricsRegistry
 from mcp_toolbox.models import ErrorCategory, ToolboxError
 
@@ -88,12 +88,16 @@ class AuditMiddleware:
 
         arguments = params.get("arguments")
         summary: dict[str, Any] = {
-            "parameter_names": sorted(str(name) for name in params if name != "_meta")[:20],
+            "parameter_names": sorted(
+                _bounded_identifier(str(name), 200) for name in params if name != "_meta"
+            )[:20],
             "argument_count": len(arguments) if isinstance(arguments, Mapping) else 0,
         }
         if isinstance(arguments, Mapping):
             summary["arguments"] = {
-                str(name): AuditMiddleware._value_summary(str(name), value)
+                _bounded_identifier(str(name), 200): AuditMiddleware._value_summary(
+                    str(name), value
+                )
                 for name, value in list(arguments.items())[:20]
             }
         return summary
@@ -174,16 +178,10 @@ class AuditMiddleware:
         if not isinstance(name, str):
             return None
         identifier = f"{name}/{version}" if isinstance(version, str) else name
-        return identifier[:200]
+        return _bounded_identifier(identifier, 200)
 
 
 def _bounded_identifier(value: str, max_length: int) -> str:
-    """Fit a client-chosen identifier into an audit field without failing the request.
+    """Fit a client-chosen identifier into an audit field without failing the request."""
 
-    JSON-RPC ids and tool names have no length limit. An over-long value is replaced by a
-    stable digest so the audit event still validates and the same id still correlates.
-    """
-
-    if 0 < len(value) <= max_length:
-        return value
-    return f"sha256:{sha256(value.encode('utf-8')).hexdigest()}"[:max_length]
+    return bounded_identifier(value, max_length)

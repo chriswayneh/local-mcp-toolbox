@@ -116,3 +116,19 @@ def test_public_ssh_key_is_not_redacted() -> None:
 
         assert result.text == value
         assert result.redaction_count == 0
+
+
+def test_redact_value_redacts_and_counts_mapping_keys_and_values() -> None:
+    token = "ghp_123456789012345678901234567890"
+    redacted, count = Redactor().redact_value(
+        {
+            "/home/alice/config": "ok",
+            token: "Bearer secret_token_123456",
+        }
+    )
+
+    assert redacted == {
+        "[REDACTED_HOME_PATH]/config": "ok",
+        "[REDACTED_GITHUB_TOKEN]": "Bearer [REDACTED_BEARER_TOKEN]",
+    }
+    assert count == 3

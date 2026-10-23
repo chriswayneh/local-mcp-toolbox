@@ -8,6 +8,7 @@ import re
 import threading
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 from pathlib import Path
 from time import perf_counter
 from typing import Any
@@ -76,6 +77,17 @@ class JsonlAuditLogger:
         """Redact and durably append one event within this process."""
 
         safe_payload, new_redactions = self._redactor.redact_value(event.model_dump(mode="json"))
+        if isinstance(safe_payload, dict):
+            for field_name, max_length in (
+                ("request_id", 200),
+                ("tool_name", 200),
+                ("tool_module", 100),
+                ("client_identifier", 200),
+                ("permission_decision", 100),
+            ):
+                field_value = safe_payload.get(field_name)
+                if isinstance(field_value, str):
+                    safe_payload[field_name] = bounded_identifier(field_value, max_length)
         safe_event = AuditEvent.model_validate(safe_payload)
         safe_event.redaction_count += new_redactions
         serialized = self._serialize_bounded(safe_event)
@@ -247,3 +259,11 @@ class AuditTimer:
 
     def elapsed_ms(self) -> int:
         return int((perf_counter() - self._started_at) * 1_000)
+
+
+def bounded_identifier(value: str, max_length: int) -> str:
+    """Fit a client-chosen or redacted identifier into an audit field without failing validation."""
+
+    if 0 < len(value) <= max_length:
+        return value
+    return f"sha256:{sha256(value.encode('utf-8')).hexdigest()}"[:max_length]
