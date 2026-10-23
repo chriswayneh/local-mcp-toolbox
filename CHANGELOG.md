@@ -101,6 +101,12 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
   even with `GIT_OPTIONAL_LOCKS=0`). Only stat-only rows
   (status M, same mode, 0/0 lines, such as a touched file) are omitted;
   deletions, additions, type changes and mode changes are still reported.
+- Over-long or post-redaction-expanded audit identifiers (`request_id`,
+  `tool_name`, `tool_module`, `client_identifier`) and argument keys no longer
+  break the request or drop the audit record; values exceeding their field limit
+  before or after redaction are stored as a deterministic `sha256:` digest, and
+  dictionary keys in audit summaries and `Redactor.redact_value` are redacted
+  and counted alongside values.
 
 ## [1.5.3] - 2026-10-04
 

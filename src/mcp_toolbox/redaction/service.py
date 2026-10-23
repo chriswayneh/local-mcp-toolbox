@@ -309,13 +309,14 @@ class Redactor:
             redacted: dict[str, Any] = {}
             count = 0
             for key, item in value.items():
+                safe_key, key_count = self.redact_value(str(key))
                 safe_item, item_count = self.redact_value(item)
                 if self._is_sensitive_string(str(key), item):
                     # The key says the whole value is a secret, so never keep any part of
                     # it, even when a pattern already redacted a piece.
                     safe_item, item_count = "[REDACTED_SENSITIVE_FIELD]", max(item_count, 1)
-                redacted[str(key)] = safe_item
-                count += item_count
+                redacted[str(safe_key)] = safe_item
+                count += key_count + item_count
             return redacted, count
         if isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray)):
             items: list[Any] = []
