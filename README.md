@@ -64,7 +64,7 @@ The default profile has no approved file roots or optional integrations. Start b
 | --- | --- | --- |
 | System | Safe host metadata and developer-tool availability | No environment variables, usernames, process data, or executable paths |
 | Filesystem | Approved-root listing, metadata, and text inspection | Canonical containment, sensitive-path blocklist, extension allowlist, bounded reads |
-| Git | Repository status, branch, commits, and diff summaries | Explicit repository allowlist; fixed, non-interactive Git commands |
+| Git | Repository status, branch, commits, and diff summaries | Explicit repository allowlist; fixed, non-interactive Git commands that ignore repo settings able to run programs (hooks, fsmonitor, external diff, filter drivers, signature verifiers), do not inspect submodule work trees, and never write to the repo |
 | GitHub | Repository, issue, and pull-request metadata | External-network opt-in, exact repository allowlist, fixed API origin, bounded GET requests |
 | Python environments | Static virtual-environment dependency metadata audit | Separate roots, link-free fixed paths, no interpreter, Pip, subprocess, import, or network execution |
 | Metrics | Aggregate request outcomes and latency | In-process counters only; no arguments, responses, identifiers, or secrets |

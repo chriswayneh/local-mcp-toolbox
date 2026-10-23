@@ -80,7 +80,7 @@ Redaction recognizes PEM private-key blocks, API/service credentials, authorizat
 
 ## Command and integration policy
 
-There is no `exec`, `shell`, `terminal`, or `run_command` MCP tool. The shipped Git and Bandit adapters use fixed command templates, scrubbed environments, time limits, output caps, and audit events with `shell=False`. Read-only does not mean no subprocesses; it means clients cannot supply arbitrary commands or request mutations.
+There is no `exec`, `shell`, `terminal`, or `run_command` MCP tool. The shipped Git and Bandit adapters use fixed command templates, scrubbed environments (including `--no-lazy-fetch`, `GIT_NO_LAZY_FETCH=1`, `GIT_OPTIONAL_LOCKS=0`, and config overrides that disable hooks, fsmonitor, external diff/filter drivers, promisor lazy fetches, and credential/SSH helpers), time limits, output caps, and audit events with `shell=False`. Read-only does not mean no subprocesses; it means clients cannot supply arbitrary commands or request mutations.
 
 Docker socket access is equivalent to high host privilege in many deployments. Containerized Docker inspection is opt-in; the shipped socket-proxy profile is recommended, while direct socket mounting is documented only as an advanced, high-risk configuration.
 

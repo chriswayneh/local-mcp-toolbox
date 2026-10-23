@@ -70,6 +70,37 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
   and hard-linked files are skipped (a FIFO no longer hangs the scan), files
   over 5 MB or past a 50 MB total are withheld, and the response reports
   `withheld_files` and `snapshot_truncated`.
+- Git tools no longer run programs that a repository's own settings ask for.
+  A repository could set `core.fsmonitor`, hooks, an external diff tool, or a `.gitattributes` filter
+  driver (`filter.*.clean`/`process`) in
+  `.git/config`, and Git would run that program during a status check. The
+  toolbox now passes `--no-lazy-fetch`, sets `GIT_NO_LAZY_FETCH=1`,
+  `GIT_ASKPASS=false`, and `SSH_ASKPASS=false`, overrides those settings
+  (including `protocol.allow=never`, `core.sshCommand=false`,
+  `core.askPass=false`, `core.alternateRefsCommand=false`, and
+  `credential.helper=`) via `-c` and `GIT_CONFIG_COUNT` /
+  `GIT_CONFIG_KEY_<n>` / `GIT_CONFIG_VALUE_<n>`, and refuses repositories with
+  malformed `.git/config` or filter driver names containing `=` or
+  non-printable characters, so inspecting an untrusted repository (including a
+  partial clone with `.promisor` packs) is safe. `git status` also no longer
+  refreshes or locks the index, so the repository is left exactly as it was.
+- Recent-commit inspection passes `--no-show-signature`, so a repository that
+  sets `log.showSignature` and `gpg.program` cannot make the toolbox run its
+  chosen signature verifier.
+- Status and diff summaries no longer look inside submodule work trees
+  (`--ignore-submodules=dirty`), because a submodule's own config, such as a
+  filter driver defined only there, is not covered by the parent overrides. A
+  submodule whose checked-out commit moved is still reported; uncommitted edits
+  inside a submodule are not.
+- Git status and diff summaries no longer report uncommitted edits inside a
+  submodule's own work tree (`--ignore-submodules=dirty`); docs/tools.md now
+  lists the exact flags and overrides.
+- `git_diff_summary` now runs `git diff-files -z --raw --numstat` instead of
+  `git diff --numstat` (keeping `--no-ext-diff`, `--no-textconv` and
+  `--ignore-submodules=dirty`), so it no longer rewrites `.git/index` (which happened
+  even with `GIT_OPTIONAL_LOCKS=0`). Only stat-only rows
+  (status M, same mode, 0/0 lines, such as a touched file) are omitted;
+  deletions, additions, type changes and mode changes are still reported.
 - Over-long or post-redaction-expanded audit identifiers (`request_id`,
   `tool_name`, `tool_module`, `client_identifier`) and argument keys no longer
   break the request or drop the audit record; values exceeding their field limit
