@@ -64,7 +64,7 @@ The default profile has no approved file roots or optional integrations. Start b
 | --- | --- | --- |
 | System | Safe host metadata and developer-tool availability | No environment variables, usernames, process data, or executable paths |
 | Filesystem | Approved-root listing, metadata, and text inspection | Canonical containment, sensitive-path blocklist, extension allowlist, bounded reads |
-| Git | Repository status, branch, commits, and diff summaries (Linux only; refused on macOS and Windows, see [platform support](docs/security-model.md#git-platform-support)) | Explicit repository allowlist of main working trees (linked worktrees, submodule checkouts, and clones with outside alternates are refused); fixed, non-interactive Git commands pinned to the repository's own `.git` |
+| Git | Repository status, branch, commits, and diff summaries (Linux only; refused on macOS and Windows, see [platform support](docs/security-model.md#git-platform-support)) | Explicit repository allowlist of main working trees (linked worktrees, submodule checkouts, and clones with outside alternates are refused); fixed, non-interactive Git commands pinned to the repository's own `.git` that ignore repo settings able to run programs (hooks, fsmonitor, external diff, filter drivers, signature verifiers, promisor lazy fetches), do not inspect submodule work trees, and never write to the repo |
 | GitHub | Repository, issue, and pull-request metadata | External-network opt-in, exact repository allowlist, fixed API origin, bounded GET requests |
 | Python environments | Static virtual-environment dependency metadata audit | Separate roots, link-free fixed paths, no interpreter, Pip, subprocess, import, or network execution |
 | Metrics | Aggregate request outcomes and latency | In-process counters only; no arguments, responses, identifiers, or secrets |
@@ -218,7 +218,7 @@ The design applies zero-trust principles and least privilege: each tool request 
 | Approved roots | Canonical containment blocks arbitrary filesystem access and escape paths. |
 | Read-only surface | No generic shell, mutation, commit, lifecycle, or remote-execution tool is registered. |
 | Fixed subprocesses | External binaries use fixed argument templates, `shell=False`, scrubbed environments, timeouts, and output caps. |
-| Central redaction | PEM blocks, credentials, cookies, authorization headers, connection strings, and home-directory paths are redacted before output. Email and IP redaction are off unless enabled. |
+| Central redaction | PEM blocks, credentials (including whole quoted JSON `"password": "..."` values, short values, and the entire value, including lists and objects, under any secret-named key in structured data; plain-text `privateKey`, `*_credentials`, `*_pass`, camelCase `*Token`/`*ApiKey` keys and XML `<password>`-style elements, with or without attributes, too), cookies, authorization headers, connection strings, and home-directory paths are redacted before output. Email and IP redaction are off unless enabled. |
 | Output bounds | File reads, collections, subprocess output, and responses are size-limited. |
 | Sanitized audit | Requests record safe metadata, actual outcomes, and redaction counts. Raw secrets and tool output are excluded. |
 | Explicit integrations | GitHub, Git, Docker, logs, scanners, infrastructure, and incident tools must be configured intentionally. |

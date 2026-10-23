@@ -30,6 +30,25 @@ _GIT_METADATA_ENTRIES = (*_GIT_METADATA_DIRECTORIES, *_GIT_METADATA_FILES)
 # Longest alternates chain accepted; longer chains are refused rather than walked.
 _MAX_ALTERNATE_STORES = 64
 _MAX_GIT_METADATA_BYTES = 1_048_576
+# Repository-local config is controlled by whoever wrote the repository. These overrides
+# win over it and stop Git from running repo-chosen programs or writing to the repository.
+_SAFE_CONFIG_OVERRIDES = (
+    "core.fsmonitor=false",
+    f"core.hooksPath={os.devnull}",
+    "core.untrackedCache=false",
+    "diff.external=",
+    "status.submoduleSummary=false",
+    "log.showSignature=false",
+    # Never descend into submodule work trees: a submodule's own config (filters, fsmonitor,
+    # hooks) is invisible to the parent-level overrides above.
+    "diff.ignoreSubmodules=dirty",
+    # Block partial-clone promisor lazy fetches, alternate-ref helpers, and credential/SSH helpers.
+    "protocol.allow=never",
+    "core.sshCommand=false",
+    "core.askPass=false",
+    "core.alternateRefsCommand=false",
+    "credential.helper=",
+)
 _READ_ONLY = ToolAnnotations(
     read_only_hint=True,
     destructive_hint=False,
@@ -78,25 +97,31 @@ class GitRunner:
         git_dir = repository / ".git"
         stores = _require_self_contained_git_dir(repository, git_dir)
         before = _git_dir_fingerprint(git_dir, stores)
-        # Explicit --git-dir/--work-tree win over repo-local core.worktree, so Git can only
-        # read the approved working tree.
-        command = [
-            executable,
-            "-C",
-            str(repository),
-            f"--git-dir={git_dir}",
-            f"--work-tree={repository}",
-            *arguments,
-        ]
         # The full check above runs once. Immediately before exec and again after Git exits, a
         # cheap fingerprint (identity, mtime, and ctime of every object and ref directory, plus
         # the redirect files) must still match: any rename, swap, or plant in between changes a
         # directory's timestamps, so the output is discarded instead of returned.
         if _git_dir_fingerprint(git_dir, stores) != before:
             raise _git_dir_changed()
-        environment = _safe_git_environment(repository)
         try:
             with _pinned_object_view(repository, git_dir, stores) as (object_view, pinned_fds):
+                overrides = [
+                    *_safe_config_arguments(),
+                    *_filter_driver_overrides(executable, repository, self._runtime, object_view),
+                ]
+                # Explicit --git-dir/--work-tree win over repo-local core.worktree, so Git can only
+                # read the approved working tree.
+                command = [
+                    executable,
+                    "--no-lazy-fetch",
+                    *overrides,
+                    f"--git-dir={git_dir}",
+                    f"--work-tree={repository}",
+                    "-C",
+                    str(repository),
+                    *arguments,
+                ]
+                environment = _safe_git_environment(overrides, repository=repository)
                 if object_view is not None:
                     environment["GIT_OBJECT_DIRECTORY"] = object_view
                 # The command is assembled only from the resolved Git executable, approved
@@ -160,7 +185,9 @@ def register_git_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[str, 
         """Inspect branch state and changed-file counts without reading diff contents."""
 
         repo = _require_repository(runtime, repository)
-        lines = runner.run(repo, ["status", "--porcelain=v1", "--branch"]).stdout.splitlines()
+        lines = runner.run(
+            repo, ["status", "--porcelain=v1", "--branch", "--ignore-submodules=dirty"]
+        ).stdout.splitlines()
         branch = (
             _parse_branch(lines[0])
             if lines
@@ -218,6 +245,7 @@ def register_git_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[str, 
             repo,
             [
                 "log",
+                "--no-show-signature",
                 f"--max-count={result_limit}",
                 f"--format=%H{_FIELD_SEPARATOR}%h{_FIELD_SEPARATOR}%an{_FIELD_SEPARATOR}%aI{_FIELD_SEPARATOR}%s{_RECORD_SEPARATOR}",
             ],
@@ -235,13 +263,14 @@ def register_git_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[str, 
         annotations=_READ_ONLY,
     )
     def git_diff_summary(repository: str) -> dict[str, Any]:
-        """Return only Git diffstat metadata for tracked, unstaged changes."""
+        """Return only Git diffstat metadata for tracked, unstaged changes.
+
+        Uses `git diff-files`, which compares without refreshing (rewriting) `.git/index`.
+        """
 
         repo = _require_repository(runtime, repository)
-        lines = runner.run(repo, ["diff", "--numstat"]).stdout.splitlines()
-        files = [
-            parsed for line in lines if line and (parsed := _parse_numstat_line(line)) is not None
-        ]
+        output = runner.run(repo, list(_DIFF_SUMMARY_ARGUMENTS)).stdout
+        files = _diff_files_summary(output)
         return bounded_response(
             runtime,
             "Collected a Git diff summary without diff contents.",
@@ -755,23 +784,168 @@ def _alternates_denial() -> ToolboxError:
     )
 
 
-def _safe_git_environment(repository: Path | None = None) -> dict[str, str]:
-    """Keep Git non-interactive and prevent user/system config from injecting behavior."""
+def _safe_config_arguments() -> list[str]:
+    """Return ``-c`` overrides that neutralize repository-controlled command execution."""
 
+    arguments: list[str] = []
+    for override in _SAFE_CONFIG_OVERRIDES:
+        arguments.extend(["-c", override])
+    return arguments
+
+
+def _filter_driver_overrides(
+    executable: str,
+    repository: Path,
+    runtime: ServerRuntime,
+    object_view: str | None = None,
+) -> list[str]:
+    """Blank every configured filter driver so ``.gitattributes`` cannot run clean/process commands.
+
+    Filter driver names are chosen by the repository, so they cannot be listed in the fixed
+    overrides. Reading config with ``git config`` never runs a driver.
+    """
+
+    git_dir = repository / ".git"
+    environment = _safe_git_environment(repository=repository)
+    if object_view is not None:
+        environment["GIT_OBJECT_DIRECTORY"] = object_view
+    try:
+        completed = subprocess.run(  # noqa: S603  # nosec B603
+            [
+                executable,
+                "--no-lazy-fetch",
+                f"--git-dir={git_dir}",
+                f"--work-tree={repository}",
+                "-C",
+                str(repository),
+                "config",
+                "--name-only",
+                "--get-regexp",
+                r"^filter\..*\.(clean|smudge|process)$",
+            ],
+            check=False,
+            shell=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=runtime.settings.limits.timeout_seconds,
+            env=environment,
+        )
+    except (subprocess.TimeoutExpired, OSError) as error:
+        raise ToolboxError(
+            ErrorCategory.INTEGRATION_UNAVAILABLE,
+            "Git configuration could not be inspected safely.",
+            remediation="Check the local Git installation and server permissions.",
+        ) from error
+    if completed.returncode not in (0, 1):
+        raise ToolboxError(
+            ErrorCategory.PERMISSION_DENIED,
+            "Git configuration could not be validated safely.",
+            remediation="Repair the repository's .git/config before inspecting it.",
+        )
+    drivers: set[str] = set()
+    for raw_name in completed.stdout.split("\n"):
+        line = raw_name[:-1] if raw_name.endswith("\r") else raw_name
+        if not line:
+            continue
+        lowered = line.lower()
+        driver = (
+            line[len("filter.") : line.rindex(".")]
+            if lowered.startswith("filter.")
+            and line.count(".") >= 2
+            and lowered.rsplit(".", 1)[-1] in ("clean", "smudge", "process")
+            else ""
+        )
+        if _is_unsafe_filter_driver_name(driver):
+            raise ToolboxError(
+                ErrorCategory.PERMISSION_DENIED,
+                "The repository defines an unsafe Git filter driver name.",
+                remediation=(
+                    "Remove filter drivers whose names contain '=' or control characters "
+                    "from .git/config."
+                ),
+            )
+        drivers.add(driver)
+    arguments: list[str] = []
+    for driver in sorted(drivers):
+        for key in ("clean", "smudge", "process"):
+            arguments.extend(["-c", f"filter.{driver}.{key}="])
+        arguments.extend(["-c", f"filter.{driver}.required=false"])
+    return arguments
+
+
+def _is_unsafe_filter_driver_name(driver: str) -> bool:
+    """Return True when a filter driver name is empty or contains '=' or non-printable chars."""
+
+    return (
+        not driver
+        or "=" in driver
+        or not driver.isprintable()
+        or any(ord(char) < 0x20 or ord(char) == 0x7F for char in driver)
+    )
+
+
+def _config_override_pairs(overrides: Sequence[str]) -> list[tuple[str, str]]:
+    """Extract (key, value) pairs from fixed overrides and any `-c key=value` arguments."""
+
+    entries: list[str] = list(_SAFE_CONFIG_OVERRIDES)
+    for index, argument in enumerate(overrides[:-1]):
+        if argument == "-c":
+            candidate = overrides[index + 1]
+            if candidate not in entries:
+                entries.append(candidate)
+        elif "=" in argument and (index == 0 or overrides[index - 1] != "-c"):
+            if argument not in entries:
+                entries.append(argument)
+    pairs: list[tuple[str, str]] = []
+    for entry in entries:
+        # Values in _SAFE_CONFIG_OVERRIDES and _filter_driver_overrides never contain '=',
+        # so rpartition('=') preserves any '=' inside a filter.<name>.<op> key.
+        key, separator, value = entry.rpartition("=")
+        if separator and key:
+            pairs.append((key, value))
+    return pairs
+
+
+def _safe_git_environment(
+    overrides: Sequence[str] | Path | None = (),
+    *,
+    repository: Path | None = None,
+) -> dict[str, str]:
+    """Keep Git non-interactive, read-only, and free of user/system config injection."""
+
+    if isinstance(overrides, Path):
+        repository = overrides
+        override_seq: Sequence[str] = ()
+    else:
+        override_seq = overrides or ()
     environment = {"PATH": os.environ.get("PATH", ""), "GIT_TERMINAL_PROMPT": "0"}
     for name in ("SYSTEMROOT", "WINDIR", "PATHEXT"):
         if value := os.environ.get(name):
             environment[name] = value
     environment["GIT_CONFIG_NOSYSTEM"] = "1"
     environment["GIT_CONFIG_GLOBAL"] = os.devnull
+    # Stop `git status` from refreshing the index or taking index.lock in the repository.
+    environment["GIT_OPTIONAL_LOCKS"] = "0"
+    environment["GIT_NO_LAZY_FETCH"] = "1"
+    environment["GIT_ASKPASS"] = "false"
+    environment["SSH_ASKPASS"] = "false"
     if repository is not None:
         # Never search above the approved repository for a different one.
         environment["GIT_CEILING_DIRECTORIES"] = str(repository.parent)
         # Pin the common and object directories to the approved .git so nothing in it can
         # redirect them.
         git_dir = repository / ".git"
+        environment["GIT_DIR"] = str(git_dir)
+        environment["GIT_WORK_TREE"] = str(repository)
         environment["GIT_COMMON_DIR"] = str(git_dir)
         environment["GIT_OBJECT_DIRECTORY"] = str(git_dir / "objects")
+    pairs = _config_override_pairs(override_seq)
+    environment["GIT_CONFIG_COUNT"] = str(len(pairs))
+    for index, (key, value) in enumerate(pairs):
+        environment[f"GIT_CONFIG_KEY_{index}"] = key
+        environment[f"GIT_CONFIG_VALUE_{index}"] = value
     return environment
 
 
@@ -829,6 +1003,75 @@ def _parse_commits(output: str) -> list[dict[str, str]]:
             }
         )
     return commits
+
+
+_DIFF_SUMMARY_ARGUMENTS = (
+    "diff-files",
+    "-z",
+    "--raw",
+    "--numstat",
+    "--no-ext-diff",
+    "--no-textconv",
+    "--ignore-submodules=dirty",
+)
+
+
+def _diff_files_summary(output: str) -> list[dict[str, str | int | None]]:
+    """Parse `diff-files -z --raw --numstat` output and drop only stat-only phantom rows.
+
+    diff-files does not refresh stat info, so a file whose timestamps changed but whose content
+    and mode did not can be reported as status M with 0/0 counts. Raw and numstat records are
+    matched by path, never by position. A row is dropped only when its path has exactly one raw
+    record, that record is status M with the same old and new mode, and the counts are 0/0.
+    """
+
+    tokens = output.split("\0")
+    raw_by_path: dict[str, list[tuple[str, str, str]]] = {}
+    numstat_rows: list[dict[str, str | int | None]] = []
+    position = 0
+    while position < len(tokens):
+        token = tokens[position]
+        position += 1
+        if not token:
+            continue
+        if token.startswith(":"):
+            if position >= len(tokens):
+                break
+            path = tokens[position]
+            position += 1
+            fields = token[1:].split()
+            if len(fields) < 5:
+                continue
+            raw_by_path.setdefault(path, []).append((fields[0], fields[1], fields[4]))
+            continue
+        parsed = _parse_numstat_line(token)
+        if parsed is not None:
+            numstat_rows.append(parsed)
+
+    files: dict[str, dict[str, str | int | None]] = {}
+    for parsed in numstat_rows:
+        path = str(parsed["path"])
+        if _is_stat_only_row(raw_by_path.get(path, []), parsed):
+            continue
+        existing = files.get(path)
+        if existing is None or _is_zero_row(existing):
+            files[path] = parsed
+    return list(files.values())
+
+
+def _is_zero_row(parsed: dict[str, str | int | None]) -> bool:
+    return parsed["added_lines"] == 0 and parsed["deleted_lines"] == 0
+
+
+def _is_stat_only_row(
+    raw_rows: list[tuple[str, str, str]], parsed: dict[str, str | int | None]
+) -> bool:
+    """Return True only for a lone M raw record with unchanged mode and 0/0 counts."""
+
+    if len(raw_rows) != 1:
+        return False
+    old_mode, new_mode, status = raw_rows[0]
+    return status == "M" and old_mode == new_mode and _is_zero_row(parsed)
 
 
 def _parse_numstat_line(line: str) -> dict[str, str | int | None] | None:
