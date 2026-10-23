@@ -134,3 +134,35 @@ def test_docker_tools_are_not_registered_when_integration_is_disabled(tmp_path: 
             }
 
     asyncio.run(scenario())
+
+
+def test_docker_logs_redact_before_truncating_so_secrets_are_not_split(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = ToolboxSettings(
+        profile=PermissionProfile.STANDARD,
+        integrations=IntegrationSettings(docker=True),
+        audit=AuditSettings(path=tmp_path / "audit" / "events.jsonl"),
+    )
+    output_limit = max(1_024, settings.limits.max_output_bytes // 2)
+    token = "ghp_123456789012345678901234567890"
+    # Place the token so a byte cut at output_limit would keep only its first 12 characters.
+    line = b"2026-10-21T00:00:00Z ok\n"
+    filler = output_limit - 12
+    padding = line * (filler // len(line)) + b"x" * (filler % len(line))
+    api = FakeContainer("api", health="healthy", logs=padding + token.encode() + b" tail\n")
+    monkeypatch.setattr(DockerGateway, "_client", lambda self: FakeDockerClient([api]))
+    server = create_server(build_runtime(settings))
+
+    async def scenario() -> None:
+        async with Client(server) as mcp_client:
+            result = await mcp_client.call_tool(
+                "docker_container_logs", {"container": "api", "tail": 10}
+            )
+            assert result.is_error is False
+            data = result.structured_content["data"]
+            assert data["truncated"] is True
+            assert token[:12] not in data["logs"]
+            assert result.structured_content["metadata"]["redaction_count"] >= 1
+
+    asyncio.run(scenario())
