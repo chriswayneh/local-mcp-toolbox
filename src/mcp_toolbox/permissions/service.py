@@ -151,6 +151,15 @@ class FilesystemAuthorizer:
             False, "Path is outside approved filesystem roots.", "approved_root"
         )
 
+    def matches_blocked_name(self, requested_path: Path) -> bool:
+        """Return True when the path as written (not resolved) has a blocked name in it.
+
+        ``check_path`` judges the resolved target, so a symlink named ``.env`` that points at
+        an allowed file passes it; callers that report the link's own name use this too.
+        """
+
+        return self._matches_blocked_pattern(requested_path)
+
     def _matches_blocked_pattern(self, canonical: Path) -> bool:
         names = tuple(self._normalized_name(part) for part in canonical.parts)
         patterns = tuple(pattern.lower() for pattern in self._settings.blocked_patterns)
