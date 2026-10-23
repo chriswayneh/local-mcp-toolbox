@@ -150,12 +150,13 @@ Prompts, agent skills, and MCP server entries are easy to share, so they often m
 - **Credential access and exfiltration:** references to `.env` files, SSH keys, cloud credential files, or metadata endpoints, plus webhook collectors and uploads to outside hosts.
 - **Untrusted MCP servers:** plain-HTTP or other remote endpoints, unpinned packages, shell-wrapped commands, code-injecting environment variables, inline secrets, and malformed configs.
 
-It is pattern based and runs only when you call it; nothing is checked automatically, and a clean result is not proof that a file is safe. To make it routine, run it in CI or a Git pre-commit hook. It takes one target path and recursively scans recognized agent and MCP config filenames (the full list is in the [tool catalog](docs/tools.md#agent-config-audit-rules)); use `--include <glob>` to check other files:
+It is pattern based and runs only when you call it; nothing is checked automatically, and a clean result is not proof that a file is safe. To make it routine, run it in CI or a Git pre-commit hook. It takes one target path and recursively scans recognized agent and MCP config filenames (the full list is in the [tool catalog](docs/tools.md#agent-config-audit-rules)). `--include <glob>` replaces the default filename list, so to check extra files pass `--include` for every pattern you want scanned, including the defaults:
 
 ```bash
 # CI step or .git/hooks/pre-commit, run from an activated virtual environment
 # (or call .venv/bin/local-mcp-toolbox). Fails (exit 1) on any high-severity finding.
-# Point it at your own config paths, or add --include '<glob>' for other files.
+# Point it at your own config paths.
+# Note: --include <glob> replaces the default filename discovery; it does not add to it.
 local-mcp-toolbox audit-agent-configs . --fail-on high
 ```
 
