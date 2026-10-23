@@ -125,7 +125,7 @@ def test_tool_templates_pin_their_safety_flags(
     by_verb = {c["argv"][c["argv"].index("-C") + 2]: c["argv"] for c in calls if "-C" in c["argv"]}
     assert "--ignore-submodules=dirty" in by_verb["status"]
     for flag in ("--numstat", "--no-ext-diff", "--no-textconv", "--ignore-submodules=dirty"):
-        assert flag in by_verb["diff"], flag
+        assert flag in by_verb["diff-files"], flag
     assert "--no-show-signature" in by_verb["log"]
     for verb_argv in by_verb.values():
         assert "--no-lazy-fetch" in verb_argv

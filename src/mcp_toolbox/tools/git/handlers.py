@@ -212,16 +212,14 @@ def register_git_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[str, 
         annotations=_READ_ONLY,
     )
     def git_diff_summary(repository: str) -> dict[str, Any]:
-        """Return only Git diffstat metadata for tracked, unstaged changes."""
+        """Return only Git diffstat metadata for tracked, unstaged changes.
+
+        Uses `git diff-files`, which compares without refreshing (rewriting) `.git/index`.
+        """
 
         repo = _require_repository(runtime, repository)
-        lines = runner.run(
-            repo,
-            ["diff", "--numstat", "--no-ext-diff", "--no-textconv", "--ignore-submodules=dirty"],
-        ).stdout.splitlines()
-        files = [
-            parsed for line in lines if line and (parsed := _parse_numstat_line(line)) is not None
-        ]
+        output = runner.run(repo, list(_DIFF_SUMMARY_ARGUMENTS)).stdout
+        files = _diff_files_summary(output)
         return bounded_response(
             runtime,
             "Collected a Git diff summary without diff contents.",
@@ -430,6 +428,75 @@ def _parse_commits(output: str) -> list[dict[str, str]]:
             }
         )
     return commits
+
+
+_DIFF_SUMMARY_ARGUMENTS = (
+    "diff-files",
+    "-z",
+    "--raw",
+    "--numstat",
+    "--no-ext-diff",
+    "--no-textconv",
+    "--ignore-submodules=dirty",
+)
+
+
+def _diff_files_summary(output: str) -> list[dict[str, str | int | None]]:
+    """Parse `diff-files -z --raw --numstat` output and drop only stat-only phantom rows.
+
+    diff-files does not refresh stat info, so a file whose timestamps changed but whose content
+    and mode did not can be reported as status M with 0/0 counts. Raw and numstat records are
+    matched by path, never by position. A row is dropped only when its path has exactly one raw
+    record, that record is status M with the same old and new mode, and the counts are 0/0.
+    """
+
+    tokens = output.split("\0")
+    raw_by_path: dict[str, list[tuple[str, str, str]]] = {}
+    numstat_rows: list[dict[str, str | int | None]] = []
+    position = 0
+    while position < len(tokens):
+        token = tokens[position]
+        position += 1
+        if not token:
+            continue
+        if token.startswith(":"):
+            if position >= len(tokens):
+                break
+            path = tokens[position]
+            position += 1
+            fields = token[1:].split()
+            if len(fields) < 5:
+                continue
+            raw_by_path.setdefault(path, []).append((fields[0], fields[1], fields[4]))
+            continue
+        parsed = _parse_numstat_line(token)
+        if parsed is not None:
+            numstat_rows.append(parsed)
+
+    files: dict[str, dict[str, str | int | None]] = {}
+    for parsed in numstat_rows:
+        path = str(parsed["path"])
+        if _is_stat_only_row(raw_by_path.get(path, []), parsed):
+            continue
+        existing = files.get(path)
+        if existing is None or _is_zero_row(existing):
+            files[path] = parsed
+    return list(files.values())
+
+
+def _is_zero_row(parsed: dict[str, str | int | None]) -> bool:
+    return parsed["added_lines"] == 0 and parsed["deleted_lines"] == 0
+
+
+def _is_stat_only_row(
+    raw_rows: list[tuple[str, str, str]], parsed: dict[str, str | int | None]
+) -> bool:
+    """Return True only for a lone M raw record with unchanged mode and 0/0 counts."""
+
+    if len(raw_rows) != 1:
+        return False
+    old_mode, new_mode, status = raw_rows[0]
+    return status == "M" and old_mode == new_mode and _is_zero_row(parsed)
 
 
 def _parse_numstat_line(line: str) -> dict[str, str | int | None] | None:
