@@ -25,6 +25,8 @@ from mcp_toolbox.tools.security import handlers, safe_reader
 
 pytestmark = pytest.mark.skipif(sys.platform != "win32", reason="Windows junctions")
 
+_FALLBACK_FUNCTIONS = frozenset({"_read_resolved", "read_resolved_fallback"})
+
 
 def _junction(link: Path, target: Path) -> None:
     subprocess.run(  # noqa: S603
@@ -42,7 +44,13 @@ def _swap_for_junction_during_open(
     state = {"swapped": False, "restored": False}
 
     def swapping_stat(path, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003, ANN202
-        if not state["swapped"] and Path(path) == root / "pkg" / name:
+        # Swap only on the pre-open stat inside the fallback itself, after its checks.
+        caller = sys._getframe(1).f_code.co_name
+        if (
+            not state["swapped"]
+            and caller in _FALLBACK_FUNCTIONS
+            and Path(path) == root / "pkg" / name
+        ):
             state["swapped"] = True
             os.rename(root / "pkg", root / "pkg_real")
             _junction(root / "pkg", other / "pkg")
