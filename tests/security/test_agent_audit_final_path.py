@@ -39,7 +39,7 @@ def _swap_parent_during_open(monkeypatch: pytest.MonkeyPatch, root: Path, other:
 def _layout(tmp_path: Path) -> tuple[Path, Path]:
     root = (tmp_path / "approved").resolve()
     (root / "pkg").mkdir(parents=True)
-    (root / "pkg" / "AGENTS.md").write_text("# Safe\n", encoding="utf-8")
+    (root / "pkg" / "AGENTS.md").write_bytes(b"# Safe\n")
     other = (tmp_path / "other").resolve()
     (other / "pkg").mkdir(parents=True)
     (other / "pkg" / "AGENTS.md").write_text("# LEAKED\n", encoding="utf-8")
