@@ -5,6 +5,7 @@ from mcp_toolbox.tools.git.handlers import (
     _parse_branch,
     _parse_numstat_line,
     _parse_status_line,
+    _parse_status_records,
 )
 
 
@@ -167,3 +168,16 @@ def test_unborn_branch_header_names_the_branch() -> None:
     assert _parse_branch("## No commits yet on dev...origin/dev")["head"] == "dev"
     assert _parse_branch("## Initial commit on main")["head"] == "main"
     assert _parse_branch("## HEAD (no branch)")["head"] is None
+
+
+def test_status_records_skip_the_source_path_of_a_copy_and_a_rename() -> None:
+    """With -z, a C or R record is followed by its old path, which is not a change."""
+
+    output = "## main\0C  copy.md\0orig.md\0R  new.md\0old.md\0 M x.md\0?? y.md\0"
+    records = output.split("\0")
+    assert _parse_status_records(records[1:]) == [
+        {"index_status": "C", "worktree_status": " ", "path": "copy.md"},
+        {"index_status": "R", "worktree_status": " ", "path": "new.md"},
+        {"index_status": " ", "worktree_status": "M", "path": "x.md"},
+        {"index_status": "?", "worktree_status": "?", "path": "y.md"},
+    ]
