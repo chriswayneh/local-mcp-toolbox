@@ -23,6 +23,11 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
   unusual paths (before, a bell character came back as `"bel\\a.md"`). Paths
   are escaped the same way as in `git_diff_summary`, and a renamed file is
   reported under its new path instead of `old -> new`.
+- On Windows, `security_scan_repository` now asks Windows for the real path of
+  each file it opened for the Bandit snapshot and copies the file only if that
+  path is the checked one inside the approved root. This closes the small race
+  where a folder swapped for a link during the open could leak a file from
+  outside the root. If the path cannot be read, the file is skipped (issue #43).
 
 ## [1.6.0] - 2026-10-23
 
