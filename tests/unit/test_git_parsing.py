@@ -151,3 +151,19 @@ def test_diff_files_summary_keeps_counted_row_when_zero_row_follows() -> None:
     )
 
     assert _diff_files_summary(output) == [{"path": "m.txt", "added_lines": 4, "deleted_lines": 0}]
+
+
+def test_unborn_branch_header_names_the_branch() -> None:
+    """Before the first commit the header is `## No commits yet on <branch>`.
+
+    That sentence is not the branch name, so only the name should be returned.
+    """
+    assert _parse_branch("## No commits yet on main") == {
+        "head": "main",
+        "upstream": None,
+        "ahead": 0,
+        "behind": 0,
+    }
+    assert _parse_branch("## No commits yet on dev...origin/dev")["head"] == "dev"
+    assert _parse_branch("## Initial commit on main")["head"] == "main"
+    assert _parse_branch("## HEAD (no branch)")["head"] is None
