@@ -5,6 +5,10 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
 
 ## [Unreleased]
 
+- Documented why the Git tools still refuse to run on macOS and Windows and
+  which designs could lift that safely, in "Git platform support" in
+  docs/security-model.md. No behavior change (issue #44 stays open).
+
 ## [1.6.0] - 2026-10-23
 
 - Add `security_audit_agent_configs` and the `local-mcp-toolbox audit-agent-configs`
