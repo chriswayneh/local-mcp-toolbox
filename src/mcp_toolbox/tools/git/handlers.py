@@ -952,13 +952,24 @@ def _safe_git_environment(
     return environment
 
 
+# Before the first commit, porcelain v1 prints `## No commits yet on <branch>`
+# (Git 2.15 and later) or `## Initial commit on <branch>` (older Git).
+_UNBORN_BRANCH_PREFIXES = ("No commits yet on ", "Initial commit on ")
+
+
 def _parse_branch(line: str) -> dict[str, Any]:
+    """Parse the branch header from `git status --porcelain=v1 --branch`."""
+
     head: str | None = None
     upstream: str | None = None
     ahead = 0
     behind = 0
     if line.startswith("## "):
         reference = line[3:]
+        for prefix in _UNBORN_BRANCH_PREFIXES:
+            if reference.startswith(prefix):
+                reference = reference[len(prefix) :]
+                break
         branch_part, separator, tracking_part = reference.partition("...")
         head = branch_part if branch_part != "HEAD (no branch)" else None
         if separator:

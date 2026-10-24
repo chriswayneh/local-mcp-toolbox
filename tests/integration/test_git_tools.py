@@ -1652,6 +1652,37 @@ def test_git_branch_names_with_bidi_characters_come_back_escaped(tmp_path: Path)
     asyncio.run(scenario())
 
 
+def test_git_repository_status_names_an_unborn_branch(tmp_path: Path) -> None:
+    """A fresh repository with no commits still reports its real branch name."""
+
+    if shutil.which("git") is None:
+        pytest.skip("Git is not installed")
+    repository = tmp_path / "unborn-repository"
+    repository.mkdir()
+    _git(repository, "init", "--initial-branch=trunk")
+    server = create_server(
+        build_runtime(
+            ToolboxSettings(
+                profile=PermissionProfile.STANDARD,
+                filesystem=FilesystemSettings(approved_roots=[tmp_path]),
+                integrations=IntegrationSettings(git=True),
+                git=GitSettings(approved_repositories=[repository]),
+                audit=AuditSettings(path=tmp_path / "audit" / "events.jsonl"),
+            )
+        )
+    )
+
+    async def scenario() -> None:
+        async with Client(server) as client:
+            status = await client.call_tool(
+                "git_repository_status", {"repository": str(repository)}
+            )
+            assert status.is_error is False
+            assert status.structured_content["data"]["branch"]["head"] == "trunk"
+
+    asyncio.run(scenario())
+
+
 def test_git_status_handles_renames_and_spaces_without_quoting(tmp_path: Path) -> None:
     """With -z, status paths are raw (then escaped), and a rename reports the new path."""
 
