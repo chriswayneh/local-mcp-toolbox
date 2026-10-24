@@ -5,6 +5,12 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
 
 ## [Unreleased]
 
+- Documented why the Git tools still refuse to run on macOS and Windows and
+  which designs could lift that safely, in "Git platform support" in
+  docs/security-model.md. No behavior change (issue #44 stays open).
+- `git_repository_status` now reports the real branch name in a new repository
+  that has no commits yet. Before, it returned Git's sentence
+  `No commits yet on main` as the branch name.
 - Git tools now escape control, bidi, zero-width, tag, and variation-selector
   characters (and lone surrogates) in everything they return (file paths,
   branch names, and commit subjects), so these characters cannot recolor a
@@ -17,9 +23,6 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
   unusual paths (before, a bell character came back as `"bel\\a.md"`). Paths
   are escaped the same way as in `git_diff_summary`, and a renamed file is
   reported under its new path instead of `old -> new`.
-- `git_repository_status` now reports the real branch name in a new repository
-  that has no commits yet. Before, it returned Git's sentence
-  `No commits yet on main` as the branch name.
 
 ## [1.6.0] - 2026-10-23
 
