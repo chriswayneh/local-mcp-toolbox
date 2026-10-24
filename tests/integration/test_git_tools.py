@@ -1723,3 +1723,48 @@ def test_git_status_handles_renames_and_spaces_without_quoting(tmp_path: Path) -
             }
 
     asyncio.run(scenario())
+
+
+def test_git_status_reports_a_copy_by_its_new_path(tmp_path: Path) -> None:
+    """A real `C` record from `git status -z` reports the copy, not its source path twice."""
+
+    if shutil.which("git") is None:
+        pytest.skip("Git is not installed")
+    repository = tmp_path / "copy-repository"
+    repository.mkdir()
+    _git(repository, "init")
+    _git(repository, "config", "user.name", "Toolbox Test")
+    _git(repository, "config", "user.email", "toolbox@example.test")
+    _git(repository, "config", "status.renames", "copies")
+    (repository / "orig.md").write_text("a\nb\nc\nd\ne\n", encoding="utf-8")
+    _git(repository, "add", "--all")
+    _git(repository, "commit", "-m", "base")
+    (repository / "copy.md").write_text("a\nb\nc\nd\ne\n", encoding="utf-8")
+    with (repository / "orig.md").open("a", encoding="utf-8") as handle:
+        handle.write("f\n")
+    _git(repository, "add", "--all")
+    server = create_server(
+        build_runtime(
+            ToolboxSettings(
+                profile=PermissionProfile.STANDARD,
+                filesystem=FilesystemSettings(approved_roots=[tmp_path]),
+                integrations=IntegrationSettings(git=True),
+                git=GitSettings(approved_repositories=[repository]),
+                audit=AuditSettings(path=tmp_path / "audit" / "events.jsonl"),
+            )
+        )
+    )
+
+    async def scenario() -> None:
+        async with Client(server) as client:
+            status = await client.call_tool(
+                "git_repository_status", {"repository": str(repository)}
+            )
+            changes = status.structured_content["data"]["changes"]
+            assert {(c["index_status"], c["path"]) for c in changes} == {
+                ("C", "copy.md"),
+                ("M", "orig.md"),
+            }
+            assert status.structured_content["data"]["changed_file_count"] == 2
+
+    asyncio.run(scenario())

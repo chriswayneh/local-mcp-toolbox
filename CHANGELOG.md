@@ -5,6 +5,11 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
 
 ## [Unreleased]
 
+- Tests only: Windows tests that swap a folder for a junction during the open
+  and check that the Bandit snapshot and the agent-config auditor refuse it,
+  and tests that `git_repository_status` reports a copied file (`C`) once,
+  by its new path.
+
 - Documented why the Git tools still refuse to run on macOS and Windows and
   which designs could lift that safely, in "Git platform support" in
   docs/security-model.md. No behavior change (issue #44 stays open).
