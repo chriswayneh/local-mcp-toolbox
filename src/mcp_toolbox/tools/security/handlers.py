@@ -20,6 +20,9 @@ from mcp_types import ToolAnnotations
 from mcp_toolbox.models import ErrorCategory, ToolboxError
 from mcp_toolbox.tools.common import bounded_response, require_bounded_limit
 from mcp_toolbox.tools.security.agent_audit import register_agent_config_audit_tool
+from mcp_toolbox.tools.security.safe_reader import is_under as _is_under
+from mcp_toolbox.tools.security.safe_reader import opened_file_path as _opened_file_path
+from mcp_toolbox.tools.security.safe_reader import same_path as _same_path
 
 if TYPE_CHECKING:
     from mcp_toolbox.server.runtime import ServerRuntime
@@ -407,68 +410,6 @@ def _read_resolved(
         return _read_checked(descriptor, budget, stats)
     finally:
         os.close(descriptor)
-
-
-def _same_path(left: Path, right: Path) -> bool:
-    return os.path.normcase(str(left)) == os.path.normcase(str(right))
-
-
-def _is_under(path: Path, root: Path) -> bool:
-    folded_path = Path(os.path.normcase(str(path)))
-    folded_root = Path(os.path.normcase(str(root)))
-    return folded_path != folded_root and folded_path.is_relative_to(folded_root)
-
-
-def _strip_final_path_prefix(path: str) -> str:
-    """Turn `\\\\?\\C:\\x` into `C:\\x` and `\\\\?\\UNC\\srv\\x` into `\\\\srv\\x`."""
-
-    if path.startswith("\\\\?\\UNC\\"):
-        return "\\\\" + path[len("\\\\?\\UNC\\") :]
-    if path.startswith("\\\\?\\"):
-        return path[len("\\\\?\\") :]
-    return path
-
-
-def _opened_file_path(descriptor: int) -> Path | None:
-    """Return the real path of an open file from the operating system, or None if unknown.
-
-    Windows asks GetFinalPathNameByHandleW about the open handle. Linux reads the
-    `/proc/self/fd` link (used when the fallback is forced in tests). Anything else
-    returns None, and the caller then refuses to read the file.
-    """
-
-    if sys.platform == "win32":
-        return _windows_final_path(descriptor)
-    if sys.platform.startswith("linux"):
-        try:
-            return Path(os.readlink(f"/proc/self/fd/{descriptor}"))
-        except OSError:
-            return None
-    return None
-
-
-def _windows_final_path(descriptor: int) -> Path | None:  # pragma: no cover - Windows only
-    import ctypes
-    import msvcrt
-    from ctypes import wintypes
-
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined,unused-ignore]
-    get_final_path = kernel32.GetFinalPathNameByHandleW
-    get_final_path.argtypes = [wintypes.HANDLE, wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD]
-    get_final_path.restype = wintypes.DWORD
-    handle = msvcrt.get_osfhandle(descriptor)  # type: ignore[attr-defined,unused-ignore]
-    size = 512
-    while True:
-        buffer = ctypes.create_unicode_buffer(size)
-        # FILE_NAME_NORMALIZED | VOLUME_NAME_DOS
-        length = get_final_path(handle, buffer, size, 0)
-        if length == 0:
-            return None
-        if length < size:
-            return Path(_strip_final_path_prefix(buffer.value))
-        if length > 32768:
-            return None
-        size = length + 1
 
 
 def _authorized_relative_path(

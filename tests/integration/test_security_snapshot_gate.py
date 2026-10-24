@@ -21,7 +21,7 @@ from mcp_toolbox.config.settings import (
     ToolboxSettings,
 )
 from mcp_toolbox.server import build_runtime, create_server
-from mcp_toolbox.tools.security import handlers
+from mcp_toolbox.tools.security import handlers, safe_reader
 from mcp_toolbox.tools.security.handlers import ScannerResult, ScannerRunner
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="POSIX symlink semantics")
@@ -459,8 +459,8 @@ def test_fallback_still_copies_ordinary_files(env, fallback) -> None:
 
 
 def test_windows_final_path_prefixes_are_stripped() -> None:
-    assert handlers._strip_final_path_prefix("\\\\?\\C:\\repo\\a.py") == "C:\\repo\\a.py"
-    assert handlers._strip_final_path_prefix("\\\\?\\UNC\\srv\\share\\a.py") == (
+    assert safe_reader.strip_final_path_prefix("\\\\?\\C:\\repo\\a.py") == "C:\\repo\\a.py"
+    assert safe_reader.strip_final_path_prefix("\\\\?\\UNC\\srv\\share\\a.py") == (
         "\\\\srv\\share\\a.py"
     )
-    assert handlers._strip_final_path_prefix("C:\\repo\\a.py") == "C:\\repo\\a.py"
+    assert safe_reader.strip_final_path_prefix("C:\\repo\\a.py") == "C:\\repo\\a.py"

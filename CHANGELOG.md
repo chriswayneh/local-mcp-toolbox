@@ -5,6 +5,12 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
 
 ## [Unreleased]
 
+- On Windows, `security_audit_agent_configs` and `audit-agent-configs` now
+  check the real path of each file they open, the same way the Bandit snapshot
+  does, and skip the file unless it is the checked path inside the approved
+  root. This closes a race where a folder swapped for a link during the open
+  could make the auditor read a file outside the root.
+
 - On Windows, `security_scan_repository` now asks Windows for the real path of
   each file it opened for the Bandit snapshot and copies the file only if that
   path is the checked one inside the approved root. This closes the small race
