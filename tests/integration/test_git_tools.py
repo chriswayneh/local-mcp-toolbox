@@ -1392,7 +1392,9 @@ def test_git_diff_summary_handles_tab_newline_and_unicode_paths(
     for name in names:
         (git_repository / name).write_bytes(b"x\ny\n")
 
-    assert _diff_paths(tmp_path, git_repository) == sorted(["README.md", *names])
+    # Paths come back intact but with control characters escaped (issue #42).
+    expected = ["tab\\x09name.txt", "new\\x0aline.txt", "\u00fcnic\u00f8de \u6587.txt"]
+    assert sorted(_diff_paths(tmp_path, git_repository)) == sorted(["README.md", *expected])
 
 
 @pytest.mark.skipif(
@@ -1552,6 +1554,104 @@ def test_promisor_partial_clone_never_runs_lazy_fetch_helpers(
     assert not marker.exists(), "Git tool triggered a partial-clone promisor lazy fetch"
 
 
+def test_git_tools_escape_control_and_bidi_characters(tmp_path: Path) -> None:
+    """Raw terminal and bidi controls in paths and subjects never reach the client."""
+
+    if shutil.which("git") is None:
+        pytest.skip("Git is not installed")
+    repository = tmp_path / "control-repository"
+    repository.mkdir()
+    _git(repository, "init")
+    _git(repository, "config", "user.name", "Toolbox Test")
+    _git(repository, "config", "user.email", "toolbox@example.test")
+    tricky = "evil\u202etxt.md"
+    (repository / tricky).write_text("one\n", encoding="utf-8")
+    _git(repository, "add", "--all")
+    _git(repository, "commit", "-m", "subject \x1b[31mred\x1b[0m \u2066x\u2069")
+    (repository / tricky).write_text("one\ntwo\n", encoding="utf-8")
+    (repository / "new\x07file.md").write_text("x\n", encoding="utf-8")
+    server = create_server(
+        build_runtime(
+            ToolboxSettings(
+                profile=PermissionProfile.STANDARD,
+                filesystem=FilesystemSettings(approved_roots=[tmp_path]),
+                integrations=IntegrationSettings(git=True),
+                git=GitSettings(approved_repositories=[repository]),
+                audit=AuditSettings(path=tmp_path / "audit" / "events.jsonl"),
+            )
+        )
+    )
+
+    async def scenario() -> None:
+        async with Client(server) as client:
+            results = [
+                await client.call_tool("git_repository_status", {"repository": str(repository)}),
+                await client.call_tool("git_recent_commits", {"repository": str(repository)}),
+                await client.call_tool("git_diff_summary", {"repository": str(repository)}),
+            ]
+            for result in results:
+                assert result.is_error is False
+                text = "".join(_all_strings(result.structured_content))
+                for raw in ("\x1b", "\x07", "\u202e", "\u2066", "\u2069"):
+                    assert raw not in text
+            status, commits, diff = (r.structured_content["data"] for r in results)
+            # Every tool returns the same escaped form of a path (issue #42).
+            paths = {change["path"] for change in status["changes"]}
+            assert paths == {"evil\\u202etxt.md", "new\\x07file.md"}
+            assert commits["commits"][0]["subject"] == (
+                "subject \\x1b[31mred\\x1b[0m \\u2066x\\u2069"
+            )
+            assert diff["files"][0]["path"] == "evil\\u202etxt.md"
+
+    asyncio.run(scenario())
+
+
+def _all_strings(value: object) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [text for item in value.values() for text in _all_strings(item)]
+    if isinstance(value, list):
+        return [text for item in value for text in _all_strings(item)]
+    return []
+
+
+def test_git_branch_names_with_bidi_characters_come_back_escaped(tmp_path: Path) -> None:
+    """Both tools that report the branch name escape it (issue #42)."""
+
+    if shutil.which("git") is None:
+        pytest.skip("Git is not installed")
+    repository = tmp_path / "branch-repository"
+    repository.mkdir()
+    _git(repository, "init")
+    _git(repository, "config", "user.name", "Toolbox Test")
+    _git(repository, "config", "user.email", "toolbox@example.test")
+    _git(repository, "commit", "--allow-empty", "-m", "base")
+    _git(repository, "checkout", "-b", "feat\u202eabc")
+    server = create_server(
+        build_runtime(
+            ToolboxSettings(
+                profile=PermissionProfile.STANDARD,
+                filesystem=FilesystemSettings(approved_roots=[tmp_path]),
+                integrations=IntegrationSettings(git=True),
+                git=GitSettings(approved_repositories=[repository]),
+                audit=AuditSettings(path=tmp_path / "audit" / "events.jsonl"),
+            )
+        )
+    )
+
+    async def scenario() -> None:
+        async with Client(server) as client:
+            status = await client.call_tool(
+                "git_repository_status", {"repository": str(repository)}
+            )
+            branch = await client.call_tool("git_current_branch", {"repository": str(repository)})
+            assert status.structured_content["data"]["branch"]["head"] == "feat\\u202eabc"
+            assert branch.structured_content["data"]["reference"] == "feat\\u202eabc"
+
+    asyncio.run(scenario())
+
+
 def test_git_repository_status_names_an_unborn_branch(tmp_path: Path) -> None:
     """A fresh repository with no commits still reports its real branch name."""
 
@@ -1579,5 +1679,47 @@ def test_git_repository_status_names_an_unborn_branch(tmp_path: Path) -> None:
             )
             assert status.is_error is False
             assert status.structured_content["data"]["branch"]["head"] == "trunk"
+
+    asyncio.run(scenario())
+
+
+def test_git_status_handles_renames_and_spaces_without_quoting(tmp_path: Path) -> None:
+    """With -z, status paths are raw (then escaped), and a rename reports the new path."""
+
+    if shutil.which("git") is None:
+        pytest.skip("Git is not installed")
+    repository = tmp_path / "rename-repository"
+    repository.mkdir()
+    _git(repository, "init")
+    _git(repository, "config", "user.name", "Toolbox Test")
+    _git(repository, "config", "user.email", "toolbox@example.test")
+    (repository / "old name.md").write_text("x\n", encoding="utf-8")
+    _git(repository, "add", "--all")
+    _git(repository, "commit", "-m", "base")
+    _git(repository, "mv", "old name.md", "new name.md")
+    (repository / "tab\tfile.md").write_text("x\n", encoding="utf-8")
+    server = create_server(
+        build_runtime(
+            ToolboxSettings(
+                profile=PermissionProfile.STANDARD,
+                filesystem=FilesystemSettings(approved_roots=[tmp_path]),
+                integrations=IntegrationSettings(git=True),
+                git=GitSettings(approved_repositories=[repository]),
+                audit=AuditSettings(path=tmp_path / "audit" / "events.jsonl"),
+            )
+        )
+    )
+
+    async def scenario() -> None:
+        async with Client(server) as client:
+            status = await client.call_tool(
+                "git_repository_status", {"repository": str(repository)}
+            )
+            changes = status.structured_content["data"]["changes"]
+            assert status.structured_content["data"]["changed_file_count"] == 2
+            assert {(c["index_status"], c["path"]) for c in changes} == {
+                ("R", "new name.md"),
+                ("?", "tab\\x09file.md"),
+            }
 
     asyncio.run(scenario())
