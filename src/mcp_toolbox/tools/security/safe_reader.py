@@ -294,7 +294,7 @@ def read_resolved_fallback(
     blocked_patterns: Sequence[str],
     authorizer: FilesystemAuthorizer | None,
 ) -> tuple[bytes | None, bool]:
-    """Fallback when dir_fd/O_NOFOLLOW is unavailable: reject links and verify inode."""
+    """Fallback when dir_fd/O_NOFOLLOW is unavailable: reject links, verify inode and real path."""
 
     candidate = root.joinpath(*parts)
     reject_link_or_junction_chain(root, candidate)
@@ -322,6 +322,13 @@ def read_resolved_fallback(
         if (opened.st_dev, opened.st_ino) != (expected.st_dev, expected.st_ino):
             return None, False
         if candidate.resolve(strict=True) != canonical:
+            return None, False
+        # Ask the OS where the open file really is, so a parent folder swapped for a link
+        # between the checks and the open cannot redirect the read outside the root.
+        real_path = opened_file_path(descriptor)
+        if real_path is None or not same_path(real_path, canonical):
+            return None, False
+        if not is_under(real_path, root):
             return None, False
         return read_checked_fd(descriptor, budget, max_file_bytes)
     finally:
@@ -351,3 +358,65 @@ def read_safe_candidate(
         )
     except (OSError, ValueError, ToolboxError):
         return None, False
+
+
+def same_path(left: Path, right: Path) -> bool:
+    return os.path.normcase(str(left)) == os.path.normcase(str(right))
+
+
+def is_under(path: Path, root: Path) -> bool:
+    folded_path = Path(os.path.normcase(str(path)))
+    folded_root = Path(os.path.normcase(str(root)))
+    return folded_path != folded_root and folded_path.is_relative_to(folded_root)
+
+
+def strip_final_path_prefix(path: str) -> str:
+    """Turn `\\\\?\\C:\\x` into `C:\\x` and `\\\\?\\UNC\\srv\\x` into `\\\\srv\\x`."""
+
+    if path.startswith("\\\\?\\UNC\\"):
+        return "\\\\" + path[len("\\\\?\\UNC\\") :]
+    if path.startswith("\\\\?\\"):
+        return path[len("\\\\?\\") :]
+    return path
+
+
+def opened_file_path(descriptor: int) -> Path | None:
+    """Return the real path of an open file from the operating system, or None if unknown.
+
+    Windows asks GetFinalPathNameByHandleW about the open handle. Linux reads the
+    `/proc/self/fd` link (used when the fallback is forced in tests). Anything else
+    returns None, and the caller then refuses to read the file.
+    """
+
+    if sys.platform == "win32":
+        return _windows_final_path(descriptor)
+    if sys.platform.startswith("linux"):
+        try:
+            return Path(os.readlink(f"/proc/self/fd/{descriptor}"))
+        except OSError:
+            return None
+    return None
+
+
+def _windows_final_path(descriptor: int) -> Path | None:  # pragma: no cover - Windows only
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined,unused-ignore]
+    get_final_path = kernel32.GetFinalPathNameByHandleW
+    get_final_path.argtypes = [wintypes.HANDLE, wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD]
+    get_final_path.restype = wintypes.DWORD
+    handle = msvcrt.get_osfhandle(descriptor)  # type: ignore[attr-defined,unused-ignore]
+    size = 512
+    while True:
+        buffer = ctypes.create_unicode_buffer(size)
+        # FILE_NAME_NORMALIZED | VOLUME_NAME_DOS
+        length = get_final_path(handle, buffer, size, 0)
+        if length == 0:
+            return None
+        if length < size:
+            return Path(strip_final_path_prefix(buffer.value))
+        if length > 32768:
+            return None
+        size = length + 1

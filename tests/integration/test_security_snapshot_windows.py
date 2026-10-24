@@ -17,7 +17,7 @@ from mcp_toolbox.config.settings import (
     ToolboxSettings,
 )
 from mcp_toolbox.server import build_runtime
-from mcp_toolbox.tools.security import handlers
+from mcp_toolbox.tools.security import handlers, safe_reader
 
 _WINDOWS_ONLY = pytest.mark.skipif(sys.platform != "win32", reason="Windows handle API")
 
@@ -84,8 +84,8 @@ def test_windows_junction_to_folder_outside_root_is_refused(tmp_path: Path) -> N
 def test_final_path_prefixes_are_stripped() -> None:
     """Runs on every platform: pure string handling."""
 
-    assert handlers._strip_final_path_prefix("\\\\?\\C:\\repo\\a.py") == "C:\\repo\\a.py"
-    assert handlers._strip_final_path_prefix("\\\\?\\UNC\\srv\\share\\a.py") == (
+    assert safe_reader.strip_final_path_prefix("\\\\?\\C:\\repo\\a.py") == "C:\\repo\\a.py"
+    assert safe_reader.strip_final_path_prefix("\\\\?\\UNC\\srv\\share\\a.py") == (
         "\\\\srv\\share\\a.py"
     )
-    assert handlers._strip_final_path_prefix("C:\\repo\\a.py") == "C:\\repo\\a.py"
+    assert safe_reader.strip_final_path_prefix("C:\\repo\\a.py") == "C:\\repo\\a.py"

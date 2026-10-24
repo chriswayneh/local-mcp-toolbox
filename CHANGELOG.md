@@ -28,6 +28,11 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
   path is the checked one inside the approved root. This closes the small race
   where a folder swapped for a link during the open could leak a file from
   outside the root. If the path cannot be read, the file is skipped (issue #43).
+- On Windows, `security_audit_agent_configs` and `audit-agent-configs` now
+  check the real path of each file they open, the same way the Bandit snapshot
+  does, and skip the file unless it is the checked path inside the approved
+  root. This closes a race where a folder swapped for a link during the open
+  could make the auditor read a file outside the root.
 
 ## [1.6.0] - 2026-10-23
 
