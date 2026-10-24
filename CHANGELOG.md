@@ -5,6 +5,8 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-10-23
+
 - Documented why the Git tools still refuse to run on macOS and Windows and
   which designs could lift that safely, in "Git platform support" in
   docs/security-model.md. No behavior change (issue #44 stays open).
@@ -284,7 +286,8 @@ First stable release of the secure, local-first, read-only MCP toolbox.
   represented through structured contracts.
 - GitHub private vulnerability reporting is enabled for confidential reports.
 
-[Unreleased]: https://github.com/chriswayneh/local-mcp-toolbox/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/chriswayneh/local-mcp-toolbox/compare/v1.6.1...HEAD
+[1.6.1]: https://github.com/chriswayneh/local-mcp-toolbox/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/chriswayneh/local-mcp-toolbox/compare/v1.5.3...v1.6.0
 [1.5.3]: https://github.com/chriswayneh/local-mcp-toolbox/compare/v1.5.2...v1.5.3
 [1.5.1]: https://github.com/chriswayneh/local-mcp-toolbox/compare/v1.5.0...v1.5.1

@@ -10,7 +10,7 @@
 
 A local [Model Context Protocol](https://modelcontextprotocol.io/) server for checking files, Git changes, application logs, container health, and Python environments. You choose what it can inspect. Every request is authorized, sensitive output is redacted, results are bounded, and activity is audited.
 
-**Current release:** [v1.6.0](https://github.com/chriswayneh/local-mcp-toolbox/releases/tag/v1.6.0). It adds a static auditor for agent instruction files, skills, prompts, and MCP configs. See the [changelog](CHANGELOG.md) and the [v1.5 release contract](docs/release-1.5.md).
+**Current release:** [v1.6.1](https://github.com/chriswayneh/local-mcp-toolbox/releases/tag/v1.6.1). It makes Git tool output safer (invisible and control characters are escaped, and the branch name is reported in a new repository) and closes two Windows file-reading races. v1.6.0 added a static auditor for agent instruction files, skills, prompts, and MCP configs. See the [changelog](CHANGELOG.md) and the [v1.5 release contract](docs/release-1.5.md).
 
 </div>
 
@@ -271,7 +271,7 @@ See [ROADMAP.md](ROADMAP.md) for planned phases and [CHANGELOG.md](CHANGELOG.md)
 ### Project Status
 Version 1.5 adds allowlisted GitHub inspection, content-free runtime metrics, a static [Python environment auditor](docs/environment-auditor.md), authenticated loopback HTTP, crash-safe audit rotation, and hardened release controls. Kubernetes inspection and generation features were removed after security review because their effective behavior could not satisfy the inspection-only contract.
 
-Version 1.6.0 is the current release. It adds the read-only agent config auditor (`security_audit_agent_configs` and `local-mcp-toolbox audit-agent-configs`) and tightens secret redaction, while keeping the v1.5 inspection-only contract. Support is limited to the local inspection contract in the [acceptance record](docs/release-1.5.md), not a hosted service, multi-user security boundary, or production availability guarantee. The package classifier Production/Stable means that local contract, not a hosted production service. Versions 2 through 4 are optional proposals, not unfinished release requirements.
+Version 1.6.1 is the current release. It escapes control and invisible characters in Git tool output, reports the branch name in a repository with no commits, and verifies the real path of files opened on Windows. Version 1.6.0 added the read-only agent config auditor (`security_audit_agent_configs` and `local-mcp-toolbox audit-agent-configs`) and tightened secret redaction, while keeping the v1.5 inspection-only contract. Support is limited to the local inspection contract in the [acceptance record](docs/release-1.5.md), not a hosted service, multi-user security boundary, or production availability guarantee. The package classifier Production/Stable means that local contract, not a hosted production service. Versions 2 through 4 are optional proposals, not unfinished release requirements.
 
 ## Security
 
