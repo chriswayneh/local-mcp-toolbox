@@ -5,6 +5,9 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
 
 ## [Unreleased]
 
+- Documented why the Git tools still refuse to run on macOS and Windows and
+  which designs could lift that safely, in "Git platform support" in
+  docs/security-model.md. No behavior change (issue #44 stays open).
 - `git_repository_status` now reports the real branch name in a new repository
   that has no commits yet. Before, it returned Git's sentence
   `No commits yet on main` as the branch name.
