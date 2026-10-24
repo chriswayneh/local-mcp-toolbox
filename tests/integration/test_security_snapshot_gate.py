@@ -394,3 +394,73 @@ def test_descriptor_walk_requires_root_to_be_a_directory(tmp_path: Path) -> None
     not_a_directory.write_text("x\n")
     with pytest.raises(NotADirectoryError):
         handlers._read_without_following(not_a_directory, ("a.py",), 100, handlers._SnapshotStats())
+
+
+def _swap_parent_during_open(monkeypatch, root: Path, other: Path) -> None:
+    """Swap root/pkg for a link to other/pkg after the checks, and undo it before re-resolve.
+
+    This is the window the inode and re-resolve checks alone cannot close (issue #43).
+    """
+
+    real_stat = os.stat
+    real_fstat = os.fstat
+    state = {"swapped": False}
+
+    def swapping_stat(path, *args, **kwargs):
+        if not state["swapped"] and Path(path) == root / "pkg" / "a.py":
+            state["swapped"] = True
+            os.rename(root / "pkg", root / "pkg_real")
+            os.symlink(other / "pkg", root / "pkg", target_is_directory=True)
+        return real_stat(path, *args, **kwargs)
+
+    def restoring_fstat(fd, *args, **kwargs):
+        result = real_fstat(fd, *args, **kwargs)
+        if state["swapped"] and (root / "pkg").is_symlink():
+            os.unlink(root / "pkg")
+            os.rename(root / "pkg_real", root / "pkg")
+        return result
+
+    monkeypatch.setattr(os, "stat", swapping_stat)
+    monkeypatch.setattr(os, "fstat", restoring_fstat)
+
+
+def test_fallback_refuses_parent_swapped_between_check_and_open(env, fallback, monkeypatch) -> None:
+    runtime, root, other, snapshot = env
+    (root / "pkg").mkdir()
+    (root / "pkg" / "a.py").write_text("x = 1\n")
+    (other / "pkg").mkdir()
+    (other / "pkg" / "a.py").write_text("LEAKED = 1\n")
+    _swap_parent_during_open(monkeypatch, root, other)
+    copied = _snap(runtime, root, snapshot)
+    monkeypatch.undo()
+    assert "pkg/a.py" not in copied
+    assert not (snapshot / "pkg" / "a.py").exists()
+
+
+def test_fallback_refuses_when_opened_path_is_outside_root(env, fallback, monkeypatch) -> None:
+    runtime, root, other, snapshot = env
+    (root / "a.py").write_text("x = 1\n")
+    monkeypatch.setattr(handlers, "_opened_file_path", lambda _fd: other / "a.py")
+    assert _snap(runtime, root, snapshot) == set()
+
+
+def test_fallback_fails_closed_when_opened_path_is_unknown(env, fallback, monkeypatch) -> None:
+    runtime, root, _, snapshot = env
+    (root / "a.py").write_text("x = 1\n")
+    monkeypatch.setattr(handlers, "_opened_file_path", lambda _fd: None)
+    assert _snap(runtime, root, snapshot) == set()
+
+
+def test_fallback_still_copies_ordinary_files(env, fallback) -> None:
+    runtime, root, _, snapshot = env
+    (root / "pkg").mkdir()
+    (root / "pkg" / "a.py").write_text("x = 1\n")
+    assert _snap(runtime, root, snapshot) == {"pkg/a.py"}
+
+
+def test_windows_final_path_prefixes_are_stripped() -> None:
+    assert handlers._strip_final_path_prefix("\\\\?\\C:\\repo\\a.py") == "C:\\repo\\a.py"
+    assert handlers._strip_final_path_prefix("\\\\?\\UNC\\srv\\share\\a.py") == (
+        "\\\\srv\\share\\a.py"
+    )
+    assert handlers._strip_final_path_prefix("C:\\repo\\a.py") == "C:\\repo\\a.py"

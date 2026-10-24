@@ -49,7 +49,8 @@ _MAX_FILE_BYTES = 5 * 1024 * 1024
 _MAX_SNAPSHOT_BYTES = 50 * 1024 * 1024
 # POSIX: walk each path component with O_NOFOLLOW relative to its parent's descriptor, so no
 # rename or symlink swap between check and open can redirect the read. Windows lacks
-# dir_fd/O_NOFOLLOW and falls back to resolve-then-verify (see docs/tools.md).
+# dir_fd/O_NOFOLLOW and falls back to resolve, open, then verify the open handle's real
+# path (see docs/tools.md).
 _USE_DIR_FD = (
     os.open in os.supports_dir_fd and hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY")
 )
@@ -378,8 +379,9 @@ def _read_resolved(
 ) -> bytes | None:
     """Windows fallback: resolve, check, open, then verify the opened file is the checked one.
 
-    Without dir_fd and O_NOFOLLOW a parent directory swapped between the checks and the open
-    cannot be ruled out completely; the inode and re-resolve checks narrow that window.
+    Without dir_fd and O_NOFOLLOW a parent directory can be swapped between the checks and
+    the open. So after opening, the operating system is asked for the real path of the open
+    handle, and the file is read only if that path is the checked path under `root`.
     """
 
     canonical = entry.resolve(strict=True)
@@ -397,9 +399,76 @@ def _read_resolved(
             return None
         if entry.resolve(strict=True) != canonical:
             return None
+        opened_path = _opened_file_path(descriptor)
+        if opened_path is None or not _same_path(opened_path, canonical):
+            return None
+        if not _is_under(opened_path, root):
+            return None
         return _read_checked(descriptor, budget, stats)
     finally:
         os.close(descriptor)
+
+
+def _same_path(left: Path, right: Path) -> bool:
+    return os.path.normcase(str(left)) == os.path.normcase(str(right))
+
+
+def _is_under(path: Path, root: Path) -> bool:
+    folded_path = Path(os.path.normcase(str(path)))
+    folded_root = Path(os.path.normcase(str(root)))
+    return folded_path != folded_root and folded_path.is_relative_to(folded_root)
+
+
+def _strip_final_path_prefix(path: str) -> str:
+    """Turn `\\\\?\\C:\\x` into `C:\\x` and `\\\\?\\UNC\\srv\\x` into `\\\\srv\\x`."""
+
+    if path.startswith("\\\\?\\UNC\\"):
+        return "\\\\" + path[len("\\\\?\\UNC\\") :]
+    if path.startswith("\\\\?\\"):
+        return path[len("\\\\?\\") :]
+    return path
+
+
+def _opened_file_path(descriptor: int) -> Path | None:
+    """Return the real path of an open file from the operating system, or None if unknown.
+
+    Windows asks GetFinalPathNameByHandleW about the open handle. Linux reads the
+    `/proc/self/fd` link (used when the fallback is forced in tests). Anything else
+    returns None, and the caller then refuses to read the file.
+    """
+
+    if sys.platform == "win32":
+        return _windows_final_path(descriptor)
+    if sys.platform.startswith("linux"):
+        try:
+            return Path(os.readlink(f"/proc/self/fd/{descriptor}"))
+        except OSError:
+            return None
+    return None
+
+
+def _windows_final_path(descriptor: int) -> Path | None:  # pragma: no cover - Windows only
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined,unused-ignore]
+    get_final_path = kernel32.GetFinalPathNameByHandleW
+    get_final_path.argtypes = [wintypes.HANDLE, wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD]
+    get_final_path.restype = wintypes.DWORD
+    handle = msvcrt.get_osfhandle(descriptor)  # type: ignore[attr-defined,unused-ignore]
+    size = 512
+    while True:
+        buffer = ctypes.create_unicode_buffer(size)
+        # FILE_NAME_NORMALIZED | VOLUME_NAME_DOS
+        length = get_final_path(handle, buffer, size, 0)
+        if length == 0:
+            return None
+        if length < size:
+            return Path(_strip_final_path_prefix(buffer.value))
+        if length > 32768:
+            return None
+        size = length + 1
 
 
 def _authorized_relative_path(

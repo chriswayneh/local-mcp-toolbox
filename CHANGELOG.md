@@ -5,6 +5,12 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
 
 ## [Unreleased]
 
+- On Windows, `security_scan_repository` now asks Windows for the real path of
+  each file it opened for the Bandit snapshot and copies the file only if that
+  path is the checked one inside the approved root. This closes the small race
+  where a folder swapped for a link during the open could leak a file from
+  outside the root. If the path cannot be read, the file is skipped (issue #43).
+
 ## [1.6.0] - 2026-10-23
 
 - Add `security_audit_agent_configs` and the `local-mcp-toolbox audit-agent-configs`
