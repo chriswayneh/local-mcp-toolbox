@@ -207,6 +207,7 @@ def register_git_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[str, 
                 "changes": changes[: runtime.settings.limits.max_records],
                 "truncated_changes": len(changes) > runtime.settings.limits.max_records,
             },
+            escape_controls=True,
         )
 
     @server.tool(
@@ -228,6 +229,7 @@ def register_git_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[str, 
             runtime,
             "Collected the current Git reference.",
             {"reference": result, "detached": detached},
+            escape_controls=True,
         )
 
     @server.tool(
@@ -254,6 +256,7 @@ def register_git_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[str, 
             runtime,
             "Collected recent Git commit metadata.",
             {"commits": _parse_commits(output)},
+            escape_controls=True,
         )
 
     @server.tool(
@@ -279,6 +282,7 @@ def register_git_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[str, 
                 "files": files[: runtime.settings.limits.max_records],
                 "truncated_files": len(files) > runtime.settings.limits.max_records,
             },
+            escape_controls=True,
         )
 
     return ("git_repository_status", "git_current_branch", "git_recent_commits", "git_diff_summary")

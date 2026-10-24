@@ -53,6 +53,14 @@ Each approved repository must be a main working tree with its own `.git` directo
 
 The Git module invokes only fixed, read-only argument templates through `subprocess` with `shell=False`, a scrubbed non-interactive environment, a configured timeout, and a configured output cap. Every command also passes `--no-lazy-fetch` plus `-c` and `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_<n>` / `GIT_CONFIG_VALUE_<n>` overrides that disable repository-chosen programs and network/helper hooks (`core.fsmonitor`, `core.hooksPath`, `diff.external`, `protocol.allow=never`, `core.sshCommand=false`, `core.askPass=false`, `core.alternateRefsCommand=false`, `credential.helper=`, and every configured `filter.<driver>` clean/smudge/process command), refuses repositories whose `.git/config` is malformed or defines a filter driver name containing `=` or non-printable characters, and sets `GIT_OPTIONAL_LOCKS=0`, `GIT_NO_LAZY_FETCH=1`, `GIT_ASKPASS=false`, and `SSH_ASKPASS=false`. It has no generic command tool.
 
+**Escaped characters in Git output.** File names and commit subjects can hold invisible characters that change how a terminal or editor shows text, for example a color code or a right-to-left override that makes `evil\u202etxt.md` look like a different name. So every Git tool escapes them before returning anything:
+
+- A backslash becomes two backslashes (`\\`).
+- Control characters U+0000 to U+001F, U+007F, and U+0080 to U+009F become `\xNN`. A tab is `\x09` and a newline is `\x0a`.
+- Bidi controls U+202A to U+202E and U+2066 to U+2069, the marks U+200E, U+200F, and U+061C, and the separators U+2028 and U+2029 become `\uNNNN`.
+
+Other text, including accented letters, other scripts, and emoji, is returned as is. Secrets are redacted before escaping, so redaction still sees the original text. `git_repository_status` paths with unusual characters are additionally quoted by Git itself and then escaped like any other text, so `new<BEL>file.md` comes back as `"new\\afile.md"`.
+
 Enable Git only with an exact repository allowlist in addition to the filesystem root:
 
 ```yaml

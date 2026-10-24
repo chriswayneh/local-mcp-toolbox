@@ -5,6 +5,12 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
 
 ## [Unreleased]
 
+- Git tools now escape control and bidi characters in everything they return
+  (file paths, branch names, and commit subjects), so a file name or commit
+  message cannot hide text or recolor a terminal. A backslash is returned as
+  two backslashes. See "Escaped characters in Git output" in docs/tools.md
+  (issue #42).
+
 ## [1.6.0] - 2026-10-23
 
 - Add `security_audit_agent_configs` and the `local-mcp-toolbox audit-agent-configs`

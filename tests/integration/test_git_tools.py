@@ -1392,7 +1392,9 @@ def test_git_diff_summary_handles_tab_newline_and_unicode_paths(
     for name in names:
         (git_repository / name).write_bytes(b"x\ny\n")
 
-    assert _diff_paths(tmp_path, git_repository) == sorted(["README.md", *names])
+    # Paths come back intact but with control characters escaped (issue #42).
+    expected = ["tab\\x09name.txt", "new\\x0aline.txt", "\u00fcnic\u00f8de \u6587.txt"]
+    assert sorted(_diff_paths(tmp_path, git_repository)) == sorted(["README.md", *expected])
 
 
 @pytest.mark.skipif(
@@ -1550,3 +1552,64 @@ def test_promisor_partial_clone_never_runs_lazy_fetch_helpers(
 
     asyncio.run(scenario())
     assert not marker.exists(), "Git tool triggered a partial-clone promisor lazy fetch"
+
+
+def test_git_tools_escape_control_and_bidi_characters(tmp_path: Path) -> None:
+    """Raw terminal and bidi controls in paths and subjects never reach the client."""
+
+    if shutil.which("git") is None:
+        pytest.skip("Git is not installed")
+    repository = tmp_path / "control-repository"
+    repository.mkdir()
+    _git(repository, "init")
+    _git(repository, "config", "user.name", "Toolbox Test")
+    _git(repository, "config", "user.email", "toolbox@example.test")
+    tricky = "evil\u202etxt.md"
+    (repository / tricky).write_text("one\n", encoding="utf-8")
+    _git(repository, "add", "--all")
+    _git(repository, "commit", "-m", "subject \x1b[31mred\x1b[0m \u2066x\u2069")
+    (repository / tricky).write_text("one\ntwo\n", encoding="utf-8")
+    (repository / "new\x07file.md").write_text("x\n", encoding="utf-8")
+    server = create_server(
+        build_runtime(
+            ToolboxSettings(
+                profile=PermissionProfile.STANDARD,
+                filesystem=FilesystemSettings(approved_roots=[tmp_path]),
+                integrations=IntegrationSettings(git=True),
+                git=GitSettings(approved_repositories=[repository]),
+                audit=AuditSettings(path=tmp_path / "audit" / "events.jsonl"),
+            )
+        )
+    )
+
+    async def scenario() -> None:
+        async with Client(server) as client:
+            results = [
+                await client.call_tool("git_repository_status", {"repository": str(repository)}),
+                await client.call_tool("git_recent_commits", {"repository": str(repository)}),
+                await client.call_tool("git_diff_summary", {"repository": str(repository)}),
+            ]
+            for result in results:
+                assert result.is_error is False
+                text = "".join(_all_strings(result.structured_content))
+                for raw in ("\x1b", "\x07", "\u202e", "\u2066", "\u2069"):
+                    assert raw not in text
+            status, commits, diff = (r.structured_content["data"] for r in results)
+            # git status (without -z) already C-quotes unusual paths itself.
+            assert len(status["changes"]) == 2
+            assert commits["commits"][0]["subject"] == (
+                "subject \\x1b[31mred\\x1b[0m \\u2066x\\u2069"
+            )
+            assert diff["files"][0]["path"] == "evil\\u202etxt.md"
+
+    asyncio.run(scenario())
+
+
+def _all_strings(value: object) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [text for item in value.values() for text in _all_strings(item)]
+    if isinstance(value, list):
+        return [text for item in value for text in _all_strings(item)]
+    return []
