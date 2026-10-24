@@ -57,9 +57,15 @@ The Git module invokes only fixed, read-only argument templates through `subproc
 
 - A backslash becomes two backslashes (`\\`).
 - Control characters U+0000 to U+001F, U+007F, and U+0080 to U+009F become `\xNN`. A tab is `\x09` and a newline is `\x0a`.
-- Bidi controls U+202A to U+202E and U+2066 to U+2069, the marks U+200E, U+200F, and U+061C, and the separators U+2028 and U+2029 become `\uNNNN`.
+- These invisible or reordering characters become `\uNNNN`:
+  - bidi controls U+202A to U+202E and U+2066 to U+2069, and the marks U+200E, U+200F, and U+061C
+  - zero-width and invisible characters U+200B to U+200D, U+2060 to U+2064, U+FEFF, the soft hyphen U+00AD, and U+180E
+  - the separators U+2028 and U+2029
+  - variation selectors U+FE00 to U+FE0F
+  - lone surrogates U+D800 to U+DFFF
+- Tag characters U+E0000 to U+E007F and variation selectors U+E0100 to U+E01EF become `\UNNNNNNNN` (eight hex digits).
 
-Other text, including accented letters, other scripts, and emoji, is returned as is. Secrets are redacted before escaping, so redaction still sees the original text. `git_repository_status` paths with unusual characters are additionally quoted by Git itself and then escaped like any other text, so `new<BEL>file.md` comes back as `"new\\afile.md"`.
+Other text, including accented letters, other scripts, and most emoji, is returned as is. Emoji built with a zero-width joiner (U+200D) or a variation selector (U+FE0F) come back with those parts escaped. This list covers the characters known to hide or reorder text; it is not a promise that no other Unicode character can look misleading (for example, look-alike letters from other scripts are kept). Secrets are redacted before escaping, so redaction still sees the original text. `git_repository_status` paths with unusual characters are additionally quoted by Git itself and then escaped like any other text, so `new<BEL>file.md` comes back as `"new\\afile.md"`.
 
 Enable Git only with an exact repository allowlist in addition to the filesystem root:
 

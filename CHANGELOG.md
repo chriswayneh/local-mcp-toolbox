@@ -5,9 +5,10 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
 
 ## [Unreleased]
 
-- Git tools now escape control and bidi characters in everything they return
-  (file paths, branch names, and commit subjects), so a file name or commit
-  message cannot hide text or recolor a terminal. A backslash is returned as
+- Git tools now escape control, bidi, zero-width, tag, and variation-selector
+  characters (and lone surrogates) in everything they return (file paths,
+  branch names, and commit subjects), so these characters cannot recolor a
+  terminal or hide or reorder text. Look-alike letters are not changed. A backslash is returned as
   two backslashes. See "Escaped characters in Git output" in docs/tools.md
   (issue #42).
 

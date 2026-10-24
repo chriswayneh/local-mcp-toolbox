@@ -42,3 +42,18 @@ def test_nested_values_are_escaped_and_non_strings_kept() -> None:
         "t": True,
         "z": None,
     }
+
+
+def test_invisible_format_characters_are_escaped() -> None:
+    for code in [0x00AD, 0x180E, 0x200B, 0x200C, 0x200D, 0x2060, 0x2064, 0xFEFF, 0xFE00, 0xFE0F]:
+        assert escape_control_characters(f"a{chr(code)}b") == f"a\\u{code:04x}b"
+
+
+def test_astral_tag_and_variation_selectors_are_escaped() -> None:
+    assert escape_control_characters("a\U000e0041b") == "a\\U000e0041b"
+    for code in [0xE0000, 0xE007F, 0xE0100, 0xE01EF]:
+        assert escape_control_characters(chr(code)) == f"\\U{code:08x}"
+
+
+def test_lone_surrogates_are_escaped() -> None:
+    assert escape_control_characters("a\ud800b\udfffc") == "a\\ud800b\\udfffc"

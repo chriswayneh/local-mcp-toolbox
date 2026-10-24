@@ -11,11 +11,14 @@ if TYPE_CHECKING:
     from mcp_toolbox.server.runtime import ServerRuntime
 
 
-# C0 controls, DEL, C1 controls, the bidi embedding/override/isolate controls, the
-# implicit bidi marks (LRM, RLM, ALM), and the Unicode line and paragraph separators.
-# A backslash is matched too so that every escape in the output is unambiguous.
+# Characters that can hide or reorder text: C0 controls, DEL, C1 controls, the soft
+# hyphen, the Mongolian vowel separator, zero-width and invisible format characters,
+# bidi marks and controls, line and paragraph separators, variation selectors, the
+# byte order mark, lone surrogates, tag characters, and supplementary variation
+# selectors. A backslash is matched too so that every escape is unambiguous.
 _CONTROL_CHARACTERS = re.compile(
-    r"[\\\x00-\x1f\x7f-\x9f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]"
+    r"[\\\x00-\x1f\x7f-\x9f\xad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u2064"
+    r"\u2066-\u2069\ufe00-\ufe0f\ufeff\ud800-\udfff\U000e0000-\U000e007f\U000e0100-\U000e01ef]"
 )
 
 
@@ -24,14 +27,19 @@ def _escape_one(match: re.Match[str]) -> str:
     if character == "\\":
         return "\\\\"
     code = ord(character)
-    return f"\\x{code:02x}" if code <= 0xFF else f"\\u{code:04x}"
+    if code <= 0x9F:
+        return f"\\x{code:02x}"
+    if code <= 0xFFFF:
+        return f"\\u{code:04x}"
+    return f"\\U{code:08x}"
 
 
 def escape_control_characters(value: Any) -> Any:  # noqa: ANN401
     """Escape terminal and bidi control characters in every string inside `value`.
 
-    A backslash becomes two backslashes, control characters up to U+00FF become `\\xNN`,
-    and the bidi and separator characters become `\\uNNNN`. Other text is unchanged.
+    A backslash becomes two backslashes, control characters up to U+009F become `\\xNN`,
+    other listed characters become
+    `\\uNNNN` (or `\\UNNNNNNNN` above U+FFFF). Other text is unchanged.
     """
 
     if isinstance(value, str):
