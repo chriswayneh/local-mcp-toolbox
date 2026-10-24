@@ -16,6 +16,9 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
   path is the checked one inside the approved root. This closes the small race
   where a folder swapped for a link during the open could leak a file from
   outside the root. If the path cannot be read, the file is skipped (issue #43).
+- `git_repository_status` now reports the real branch name in a new repository
+  that has no commits yet. Before, it returned Git's sentence
+  `No commits yet on main` as the branch name.
 
 ## [1.6.0] - 2026-10-23
 

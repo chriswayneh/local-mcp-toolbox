@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
+from mcp_toolbox.models import ToolboxError
 from mcp_toolbox.tools.security import safe_reader
 
 
@@ -94,3 +96,47 @@ def test_windows_opened_file_path_matches_the_resolved_file(tmp_path: Path) -> N
     assert opened is not None
     assert safe_reader.same_path(opened, target)
     assert safe_reader.is_under(opened, tmp_path.resolve())
+
+
+def test_fallback_needs_same_path_even_inside_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The same-path check alone refuses a different file inside the root."""
+
+    root, _ = _layout(tmp_path)
+    (root / "OTHER.md").write_bytes(b"# Other\n")
+    monkeypatch.setattr(safe_reader, "opened_file_path", lambda _fd: root / "OTHER.md")
+    monkeypatch.setattr(safe_reader, "is_under", lambda _path, _root: True)
+    assert _read(root) == (None, False)
+
+
+def test_fallback_needs_path_under_root_even_when_same(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The under-root check alone refuses a path outside the root."""
+
+    root, other = _layout(tmp_path)
+    monkeypatch.setattr(safe_reader, "opened_file_path", lambda _fd: other / "pkg" / "AGENTS.md")
+    monkeypatch.setattr(safe_reader, "same_path", lambda _left, _right: True)
+    assert _read(root) == (None, False)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows junctions")
+def test_windows_junction_to_folder_outside_root_is_refused(tmp_path: Path) -> None:
+    root = (tmp_path / "approved").resolve()
+    root.mkdir()
+    outside = (tmp_path / "outside").resolve()
+    outside.mkdir()
+    (outside / "AGENTS.md").write_bytes(b"# LEAKED\n")
+    subprocess.run(  # noqa: S603
+        ["cmd", "/c", "mklink", "/J", str(root / "j"), str(outside)],  # noqa: S607
+        check=True,
+        capture_output=True,
+    )
+    try:
+        result = safe_reader.read_resolved_fallback(
+            root, ("j", "AGENTS.md"), 10_000, 10_000, (), None
+        )
+    except ToolboxError:
+        return
+    assert result == (None, False)

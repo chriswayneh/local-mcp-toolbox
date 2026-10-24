@@ -21,7 +21,7 @@ from mcp_toolbox.config.settings import (
     ToolboxSettings,
 )
 from mcp_toolbox.server import build_runtime, create_server
-from mcp_toolbox.tools.security import handlers, safe_reader
+from mcp_toolbox.tools.security import handlers
 from mcp_toolbox.tools.security.handlers import ScannerResult, ScannerRunner
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="POSIX symlink semantics")
@@ -458,9 +458,22 @@ def test_fallback_still_copies_ordinary_files(env, fallback) -> None:
     assert _snap(runtime, root, snapshot) == {"pkg/a.py"}
 
 
-def test_windows_final_path_prefixes_are_stripped() -> None:
-    assert safe_reader.strip_final_path_prefix("\\\\?\\C:\\repo\\a.py") == "C:\\repo\\a.py"
-    assert safe_reader.strip_final_path_prefix("\\\\?\\UNC\\srv\\share\\a.py") == (
-        "\\\\srv\\share\\a.py"
-    )
-    assert safe_reader.strip_final_path_prefix("C:\\repo\\a.py") == "C:\\repo\\a.py"
+def test_fallback_needs_same_path_even_inside_root(env, fallback, monkeypatch) -> None:
+    """The same-path check alone refuses a different file inside the root."""
+
+    runtime, root, _, snapshot = env
+    (root / "a.py").write_text("x = 1\n")
+    (root / "b.py").write_text("y = 1\n")
+    monkeypatch.setattr(handlers, "_opened_file_path", lambda _fd: root / "b.py")
+    monkeypatch.setattr(handlers, "_is_under", lambda _path, _root: True)
+    assert "a.py" not in _snap(runtime, root, snapshot)
+
+
+def test_fallback_needs_path_under_root_even_when_same(env, fallback, monkeypatch) -> None:
+    """The under-root check alone refuses a path outside the root."""
+
+    runtime, root, other, snapshot = env
+    (root / "a.py").write_text("x = 1\n")
+    monkeypatch.setattr(handlers, "_opened_file_path", lambda _fd: other / "a.py")
+    monkeypatch.setattr(handlers, "_same_path", lambda _left, _right: True)
+    assert _snap(runtime, root, snapshot) == set()

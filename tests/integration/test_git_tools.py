@@ -1550,3 +1550,34 @@ def test_promisor_partial_clone_never_runs_lazy_fetch_helpers(
 
     asyncio.run(scenario())
     assert not marker.exists(), "Git tool triggered a partial-clone promisor lazy fetch"
+
+
+def test_git_repository_status_names_an_unborn_branch(tmp_path: Path) -> None:
+    """A fresh repository with no commits still reports its real branch name."""
+
+    if shutil.which("git") is None:
+        pytest.skip("Git is not installed")
+    repository = tmp_path / "unborn-repository"
+    repository.mkdir()
+    _git(repository, "init", "--initial-branch=trunk")
+    server = create_server(
+        build_runtime(
+            ToolboxSettings(
+                profile=PermissionProfile.STANDARD,
+                filesystem=FilesystemSettings(approved_roots=[tmp_path]),
+                integrations=IntegrationSettings(git=True),
+                git=GitSettings(approved_repositories=[repository]),
+                audit=AuditSettings(path=tmp_path / "audit" / "events.jsonl"),
+            )
+        )
+    )
+
+    async def scenario() -> None:
+        async with Client(server) as client:
+            status = await client.call_tool(
+                "git_repository_status", {"repository": str(repository)}
+            )
+            assert status.is_error is False
+            assert status.structured_content["data"]["branch"]["head"] == "trunk"
+
+    asyncio.run(scenario())
