@@ -1595,8 +1595,9 @@ def test_git_tools_escape_control_and_bidi_characters(tmp_path: Path) -> None:
                 for raw in ("\x1b", "\x07", "\u202e", "\u2066", "\u2069"):
                     assert raw not in text
             status, commits, diff = (r.structured_content["data"] for r in results)
-            # git status (without -z) already C-quotes unusual paths itself.
-            assert len(status["changes"]) == 2
+            # Every tool returns the same escaped form of a path (issue #42).
+            paths = {change["path"] for change in status["changes"]}
+            assert paths == {"evil\\u202etxt.md", "new\\x07file.md"}
             assert commits["commits"][0]["subject"] == (
                 "subject \\x1b[31mred\\x1b[0m \\u2066x\\u2069"
             )
@@ -1613,3 +1614,81 @@ def _all_strings(value: object) -> list[str]:
     if isinstance(value, list):
         return [text for item in value for text in _all_strings(item)]
     return []
+
+
+def test_git_branch_names_with_bidi_characters_come_back_escaped(tmp_path: Path) -> None:
+    """Both tools that report the branch name escape it (issue #42)."""
+
+    if shutil.which("git") is None:
+        pytest.skip("Git is not installed")
+    repository = tmp_path / "branch-repository"
+    repository.mkdir()
+    _git(repository, "init")
+    _git(repository, "config", "user.name", "Toolbox Test")
+    _git(repository, "config", "user.email", "toolbox@example.test")
+    _git(repository, "commit", "--allow-empty", "-m", "base")
+    _git(repository, "checkout", "-b", "feat\u202eabc")
+    server = create_server(
+        build_runtime(
+            ToolboxSettings(
+                profile=PermissionProfile.STANDARD,
+                filesystem=FilesystemSettings(approved_roots=[tmp_path]),
+                integrations=IntegrationSettings(git=True),
+                git=GitSettings(approved_repositories=[repository]),
+                audit=AuditSettings(path=tmp_path / "audit" / "events.jsonl"),
+            )
+        )
+    )
+
+    async def scenario() -> None:
+        async with Client(server) as client:
+            status = await client.call_tool(
+                "git_repository_status", {"repository": str(repository)}
+            )
+            branch = await client.call_tool("git_current_branch", {"repository": str(repository)})
+            assert status.structured_content["data"]["branch"]["head"] == "feat\\u202eabc"
+            assert branch.structured_content["data"]["reference"] == "feat\\u202eabc"
+
+    asyncio.run(scenario())
+
+
+def test_git_status_handles_renames_and_spaces_without_quoting(tmp_path: Path) -> None:
+    """With -z, status paths are raw (then escaped), and a rename reports the new path."""
+
+    if shutil.which("git") is None:
+        pytest.skip("Git is not installed")
+    repository = tmp_path / "rename-repository"
+    repository.mkdir()
+    _git(repository, "init")
+    _git(repository, "config", "user.name", "Toolbox Test")
+    _git(repository, "config", "user.email", "toolbox@example.test")
+    (repository / "old name.md").write_text("x\n", encoding="utf-8")
+    _git(repository, "add", "--all")
+    _git(repository, "commit", "-m", "base")
+    _git(repository, "mv", "old name.md", "new name.md")
+    (repository / "tab\tfile.md").write_text("x\n", encoding="utf-8")
+    server = create_server(
+        build_runtime(
+            ToolboxSettings(
+                profile=PermissionProfile.STANDARD,
+                filesystem=FilesystemSettings(approved_roots=[tmp_path]),
+                integrations=IntegrationSettings(git=True),
+                git=GitSettings(approved_repositories=[repository]),
+                audit=AuditSettings(path=tmp_path / "audit" / "events.jsonl"),
+            )
+        )
+    )
+
+    async def scenario() -> None:
+        async with Client(server) as client:
+            status = await client.call_tool(
+                "git_repository_status", {"repository": str(repository)}
+            )
+            changes = status.structured_content["data"]["changes"]
+            assert status.structured_content["data"]["changed_file_count"] == 2
+            assert {(c["index_status"], c["path"]) for c in changes} == {
+                ("R", "new name.md"),
+                ("?", "tab\\x09file.md"),
+            }
+
+    asyncio.run(scenario())

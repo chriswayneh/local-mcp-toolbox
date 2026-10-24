@@ -11,6 +11,12 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
   terminal or hide or reorder text. Look-alike letters are not changed. A backslash is returned as
   two backslashes. See "Escaped characters in Git output" in docs/tools.md
   (issue #42).
+- Paths in `git_diff_summary` that contain a tab or newline now come back as
+  `\x09` or `\x0a` instead of the raw character.
+- `git_repository_status` now runs `git status -z`, so Git no longer quotes
+  unusual paths (before, a bell character came back as `"bel\\a.md"`). Paths
+  are escaped the same way as in `git_diff_summary`, and a renamed file is
+  reported under its new path instead of `old -> new`.
 
 ## [1.6.0] - 2026-10-23
 

@@ -185,19 +185,18 @@ def register_git_tools(server: MCPServer, runtime: ServerRuntime) -> tuple[str, 
         """Inspect branch state and changed-file counts without reading diff contents."""
 
         repo = _require_repository(runtime, repository)
-        lines = runner.run(
-            repo, ["status", "--porcelain=v1", "--branch", "--ignore-submodules=dirty"]
-        ).stdout.splitlines()
+        # -z: Git does not C-quote paths, so every tool escapes them the same way.
+        records = runner.run(
+            repo, ["status", "--porcelain=v1", "-z", "--branch", "--ignore-submodules=dirty"]
+        ).stdout.split("\0")
         branch = (
-            _parse_branch(lines[0])
-            if lines
+            _parse_branch(records[0])
+            if records and records[0].startswith("## ")
             else {"head": None, "upstream": None, "ahead": 0, "behind": 0}
         )
-        changes = [
-            parsed
-            for line in lines[1:]
-            if line and (parsed := _parse_status_line(line)) is not None
-        ]
+        changes = _parse_status_records(
+            records[1:] if records[:1] and records[0].startswith("## ") else records
+        )
         return bounded_response(
             runtime,
             "Collected a read-only Git working tree summary.",
@@ -987,6 +986,22 @@ def _parse_status_line(line: str) -> dict[str, str] | None:
     if len(line) < 4:
         return None
     return {"index_status": line[0], "worktree_status": line[1], "path": line[3:]}
+
+
+def _parse_status_records(records: list[str]) -> list[dict[str, str]]:
+    """Parse NUL-separated porcelain v1 records; a rename or copy is followed by its old path."""
+
+    changes: list[dict[str, str]] = []
+    skip_next = False
+    for record in records:
+        if skip_next:
+            skip_next = False
+            continue
+        if not record or (parsed := _parse_status_line(record)) is None:
+            continue
+        changes.append(parsed)
+        skip_next = "R" in record[:2] or "C" in record[:2]
+    return changes
 
 
 def _parse_commits(output: str) -> list[dict[str, str]]:
