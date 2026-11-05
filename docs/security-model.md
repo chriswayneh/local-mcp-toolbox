@@ -86,7 +86,7 @@ Docker socket access is equivalent to high host privilege in many deployments. C
 
 Git inspection is pinned to the approved repository's own `.git` directory: explicit `--git-dir`/`--work-tree`, `GIT_CEILING_DIRECTORIES`, `GIT_COMMON_DIR`, and `GIT_OBJECT_DIRECTORY`, with `commondir`, outside alternates, `http-alternates`, gitdir files, non-regular files (such as FIFOs), and symlinks in `.git` metadata, refs, `objects/info`, `objects/pack`, or at any `objects/<entry>` (including in-repository alternate stores) refused. On Linux, Git reads the main object store and any in-repository alternate stores through private views bound to descriptors opened without following links, so swapping a directory for a symlink while Git runs cannot redirect it. Accepted residual risk:
 
-- **Hardlinked packs or loose objects.** A hard link is indistinguishable from the original file, so an attacker who can hardlink another repository's pack or object into the approved one can expose it. Hard links cannot cross filesystems and need write access to the target directory.
+- **Hardlinked packs or loose objects on Linux.** An attacker who can hardlink another repository's pack or object into the approved one can expose it. Hard links cannot cross filesystems and need write access to the target directory. Native macOS and Windows snapshots reject files whose link count is not one.
 
 ### Git platform support
 
