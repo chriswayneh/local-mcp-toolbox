@@ -79,9 +79,13 @@ def test_fallback_fails_closed_when_opened_path_is_unknown(
     assert _read(root) == (None, False)
 
 
-def test_fallback_still_reads_ordinary_files(tmp_path: Path) -> None:
+def test_fallback_reads_only_where_final_paths_are_supported(tmp_path: Path) -> None:
     root, _ = _layout(tmp_path)
-    assert _read(root) == (b"# Safe\n", False)
+    if sys.platform == "win32" or sys.platform.startswith("linux"):
+        assert _read(root) == (b"# Safe\n", False)
+    else:
+        # macOS uses descriptor-relative reads; its fallback must still fail closed.
+        assert _read(root) == (None, False)
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows handle API")

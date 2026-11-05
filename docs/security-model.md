@@ -86,23 +86,22 @@ Docker socket access is equivalent to high host privilege in many deployments. C
 
 Git inspection is pinned to the approved repository's own `.git` directory: explicit `--git-dir`/`--work-tree`, `GIT_CEILING_DIRECTORIES`, `GIT_COMMON_DIR`, and `GIT_OBJECT_DIRECTORY`, with `commondir`, outside alternates, `http-alternates`, gitdir files, non-regular files (such as FIFOs), and symlinks in `.git` metadata, refs, `objects/info`, `objects/pack`, or at any `objects/<entry>` (including in-repository alternate stores) refused. On Linux, Git reads the main object store and any in-repository alternate stores through private views bound to descriptors opened without following links, so swapping a directory for a symlink while Git runs cannot redirect it. Accepted residual risk:
 
-- **Hardlinked packs or loose objects.** A hard link is indistinguishable from the original file, so an attacker who can hardlink another repository's pack or object into the approved one can expose it. Hard links cannot cross filesystems and need write access to the target directory.
+- **Hardlinked packs or loose objects on Linux.** An attacker who can hardlink another repository's pack or object into the approved one can expose it. Hard links cannot cross filesystems and need write access to the target directory. Native macOS and Windows snapshots reject files whose link count is not one.
 
 ### Git platform support
 
-**The Git tools run on Linux only.** On macOS and Windows every Git tool refuses with an `UNSUPPORTED_OPERATION` error that says so, and Git is never started.
+Git inspection supports Linux, macOS, and Windows. Linux retains descriptor-pinned object stores. Native macOS and Windows use a bounded private copy of the complete working tree and `.git` directory, including untracked files. Git and configuration probes run only against copied inputs. The source repository is never passed to a Git subprocess on these platforms.
 
-Why: on Linux, the toolbox opens the repository's object folders itself, without following symlinks, and hands Git those open folders. Someone who swaps a folder for a symlink while Git is running can't change what Git reads. macOS and Windows have no reliable way to do this. The only check there would compare the folders before and after Git runs, and a swap that is quickly undone can be missed. Data from another repository could then be returned, so the tools refuse instead of risking it.
+Every copied file passes the shared safe reader: descriptor-relative opens without following links on macOS, and opened-handle path verification on Windows. Only regular, single-link files are accepted. A missing, unsafe, or oversized file aborts the operation. Before/after directory fingerprints alone are not the security boundary. Temporary copies are deleted when the operation finishes; temporary storage must be outside the approved repository and protected by the operator's account permissions. This is not isolation from another process running as the same user.
 
-Options that were checked for native support, and why none ships yet:
+Native snapshot limits and refusals:
 
-- **Pinning the folders, as on Linux.** Linux lets the toolbox hand Git a path like `/proc/self/fd/<n>` that always means "the folder I already opened". macOS (`/dev/fd`) and Windows have no path that behaves this way for a folder, so Git would still look up the real folder names while it runs.
-- **Asking the system for the real path after the fact** (`F_GETPATH` on macOS, `GetFinalPathNameByHandleW` on Windows). These report where an open file lives, which is useful when the toolbox itself reads a file. Git opens its own files, so the toolbox cannot check each one before Git reads it.
-- **Running Git on a private copy of `.git`.** The toolbox would copy refs and objects into a temporary folder without following links, then point Git at the copy. On macOS this copy can be made without following links (`openat` with `O_NOFOLLOW`), so it could be race free, but a full copy of a large repository is slow and needs a size limit and its own review. On Windows there is no `O_NOFOLLOW`, so every copied file would also need its real path checked after opening. Neither version can be tested here yet: CI has no macOS runner, and the swap stress test has not been run on macOS or Windows.
+- At most 64 MiB of file content, 50,000 entries, and 64 directory levels per invocation, with bounded preparation time. Large repositories, including ignored build artifacts and virtual environments, can exceed these limits.
+- No symlinks, junctions, hardlinked files, nested repositories, submodules, linked worktrees, or alternate object stores. Linux's existing in-repository alternate support is unchanged.
+- Local configuration is limited to user name/email, basic core format/file-mode/line-ending settings, object format, remote URL/fetch metadata, branch remote/merge metadata, and filter definitions that the runner disables. Includes and all other configuration keys are refused. Remote metadata does not authorize network access.
+- The copy is not an atomic point-in-time snapshot. Concurrent edits within the approved repository can produce a mixed view or an error. Keep the repository stable when consistent results matter.
 
-Until one of these is built and the swap stress test passes on that platform, a weaker check (comparing folders before and after Git runs) is not shipped, because it can miss a swap and would not fail safely.
-
-What to do: if you need the Git tools on a Mac or Windows machine, run the toolbox in the provided Linux container (`compose.yaml`) and approve the repository path inside it. Progress on native support is tracked in [issue #44](https://github.com/chriswayneh/local-mcp-toolbox/issues/44).
+Native CI exercises packed and loose object directory swaps, ordinary inspection, and refusal cases. For repositories outside these constraints, use the provided Linux container (`compose.yaml`) and approve the repository path inside it. See [issue #44](https://github.com/chriswayneh/local-mcp-toolbox/issues/44).
 
 GitHub inspection requires the GitHub integration, external-network access, and an exact case-insensitive `owner/repository` allowlist. Requests use `GET` only against the fixed `https://api.github.com` origin. Tokens are read from `GITHUB_TOKEN`, used only as an authorization header, and excluded from responses and audit records.
 

@@ -359,15 +359,28 @@ def _read_without_following(
     """POSIX: open each component relative to its parent with O_NOFOLLOW, then read it."""
 
     cloexec = getattr(os, "O_CLOEXEC", 0)
-    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | cloexec
-    directory = os.open(root, os.O_RDONLY | os.O_DIRECTORY | cloexec)
+    directory_flags = (
+        os.O_RDONLY
+        | os.O_DIRECTORY  # type: ignore[attr-defined,unused-ignore]
+        | os.O_NOFOLLOW  # type: ignore[attr-defined,unused-ignore]
+        | cloexec
+    )
+    directory = os.open(
+        root,
+        os.O_RDONLY | os.O_DIRECTORY | cloexec,  # type: ignore[attr-defined,unused-ignore]
+    )
     try:
         for part in parts[:-1]:
             child = os.open(part, directory_flags, dir_fd=directory)
             os.close(directory)
             directory = child
         # O_NONBLOCK: opening a FIFO or device must not hang the scan.
-        file_flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | cloexec
+        file_flags = (
+            os.O_RDONLY
+            | os.O_NOFOLLOW  # type: ignore[attr-defined,unused-ignore]
+            | os.O_NONBLOCK  # type: ignore[attr-defined,unused-ignore]
+            | cloexec
+        )
         descriptor = os.open(parts[-1], file_flags, dir_fd=directory)
     finally:
         os.close(directory)

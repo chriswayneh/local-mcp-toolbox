@@ -20,6 +20,7 @@ from mcp_types import ToolAnnotations
 from mcp_toolbox.models import ErrorCategory, ToolboxError
 from mcp_toolbox.server.runtime import ServerRuntime
 from mcp_toolbox.tools.common import bounded_response, require_bounded_limit
+from mcp_toolbox.tools.git.snapshot import private_repository_snapshot
 
 _FIELD_SEPARATOR = "\x1f"
 _RECORD_SEPARATOR = "\x1e"
@@ -73,19 +74,28 @@ class GitRunner:
     def run(self, repository: Path, arguments: list[str]) -> GitCommandResult:
         """Run preassembled Git arguments with a scrubbed environment and bounded output."""
 
+        if not _FD_PATHS and _SNAPSHOT_PATHS:
+            with private_repository_snapshot(
+                repository, self._runtime.settings.limits.timeout_seconds
+            ) as snapshot:
+                return self._run_checked(snapshot, arguments)
         if not _FD_PATHS:
             # Without descriptor pinning a .git swap that is undone while Git runs can go
             # unnoticed, so output could leak. Refuse instead of running Git at all.
             raise ToolboxError(
                 ErrorCategory.UNSUPPORTED_OPERATION,
-                "Git tools are not supported on this operating system (only Linux). On macOS "
-                "and Windows, a repository could be swapped while Git runs and leak data from "
-                "another repository.",
+                "Git tools are not supported on this operating system. Supported platforms "
+                "are Linux, macOS, and Windows.",
                 remediation=(
                     "Run the toolbox on Linux (for example in the provided container) to use "
                     "the Git tools. See docs/security-model.md#git-platform-support."
                 ),
             )
+        return self._run_checked(repository, arguments)
+
+    def _run_checked(self, repository: Path, arguments: list[str]) -> GitCommandResult:
+        """Inspect either the Linux source or an isolated, checked private snapshot."""
+
         executable = shutil.which("git")
         if executable is None:
             raise ToolboxError(
@@ -549,6 +559,7 @@ def _non_regular_in_git_denial(name: str) -> ToolboxError:
 # Linux exposes an open descriptor as a path (/proc/self/fd/N) that Git can follow inside its
 # own process; that lets Git read exactly the directories and pack files verified here.
 _FD_PATHS = sys.platform.startswith("linux") and Path("/proc/self/fd").is_dir()
+_SNAPSHOT_PATHS = sys.platform in {"win32", "darwin"}
 _DIRECTORY_FLAGS = (
     os.O_RDONLY
     | getattr(os, "O_DIRECTORY", 0)

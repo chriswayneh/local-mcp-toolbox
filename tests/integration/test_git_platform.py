@@ -77,6 +77,7 @@ def test_git_tools_refuse_where_descriptor_pinning_is_unavailable(
 
     repository = _repository(tmp_path)
     monkeypatch.setattr(handlers, "_FD_PATHS", False)
+    monkeypatch.setattr(handlers, "_SNAPSHOT_PATHS", False)
     calls: list[object] = []
     monkeypatch.setattr(handlers.subprocess, "run", lambda *a, **k: calls.append(a))
 
@@ -85,10 +86,10 @@ def test_git_tools_refuse_where_descriptor_pinning_is_unavailable(
 
 
 @pytest.mark.skipif(
-    sys.platform not in {"darwin", "win32"}, reason="Checks the real macOS/Windows refusal"
+    sys.platform not in {"darwin", "win32"}, reason="Checks native snapshot platforms"
 )
-def test_git_tools_refuse_on_macos_and_windows(tmp_path: Path) -> None:
-    _assert_refused(_call_all(tmp_path, _repository(tmp_path)))
+def test_git_tools_run_on_macos_and_windows(tmp_path: Path) -> None:
+    assert all(not failed for failed, _ in _call_all(tmp_path, _repository(tmp_path)))
 
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux is the supported platform")

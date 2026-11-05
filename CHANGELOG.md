@@ -5,6 +5,9 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
 
 ## [Unreleased]
 
+- Git: restore native Windows and macOS inspection using bounded private copies of the complete repository. Each input file is read through the shared no-follow reader, with final handle-path verification on Windows. Git never opens the source repository on these platforms. Unsupported configuration, links, alternate object stores, nested repositories, and incomplete copies are refused. Linux descriptor pinning is unchanged.
+- Tests: add native macOS CI and Windows/macOS packed and loose object directory swap regressions, legitimate inspection controls, and source-preservation checks for issue #44.
+
 - Docs: README terminal demo GIF (`docs/assets/demo.gif`) recorded from the v1.6.1 release wheel against the synthetic agent-config fixtures, with `docs/demo.md` and `scripts/record-demo.sh` for reproduction.
 - Tests only: Windows tests that swap a folder for a junction during the open
   and check that the Bandit snapshot and the agent-config auditor refuse it,

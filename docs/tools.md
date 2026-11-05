@@ -40,7 +40,7 @@ The `restricted` default includes no approved roots, so filesystem requests are 
 
 ## Git
 
-**Linux only.** On macOS and Windows every Git tool returns an `UNSUPPORTED_OPERATION` error and Git is never started. Use the Linux container on those hosts. See [Git platform support](security-model.md#git-platform-support).
+**Linux, macOS, and Windows.** Linux uses descriptor-pinned object stores. macOS and Windows inspect a complete private copy, capped at 64 MiB, 50,000 entries, and 64 directory levels. Unsafe or incomplete copies, unsupported local configuration, links, alternate stores, nested repositories, and submodules are refused. The original repository is never passed to Git on these platforms. See [Git platform support](security-model.md#git-platform-support) for configuration restrictions and temporary storage requirements.
 
 | Tool | Inputs | Output | Safety controls |
 | --- | --- | --- | --- |
