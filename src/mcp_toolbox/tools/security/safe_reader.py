@@ -129,7 +129,12 @@ def open_anchored_dir_fd(root: Path, parts: tuple[str, ...]) -> int:
     """Open root and step through each directory part with O_RDONLY | O_DIRECTORY | O_NOFOLLOW."""
 
     cloexec = getattr(os, "O_CLOEXEC", 0)
-    dir_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | cloexec
+    dir_flags = (
+        os.O_RDONLY
+        | os.O_DIRECTORY  # type: ignore[attr-defined,unused-ignore]
+        | os.O_NOFOLLOW  # type: ignore[attr-defined,unused-ignore]
+        | cloexec
+    )
     directory = os.open(root, dir_flags)
     try:
         for part in parts:
@@ -151,7 +156,12 @@ def walk_safe_directory(
 
     if USE_DIR_FD:
         cloexec = getattr(os, "O_CLOEXEC", 0)
-        dir_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | cloexec
+        dir_flags = (
+            os.O_RDONLY
+            | os.O_DIRECTORY  # type: ignore[attr-defined,unused-ignore]
+            | os.O_NOFOLLOW  # type: ignore[attr-defined,unused-ignore]
+            | cloexec
+        )
         try:
             top_fd = open_anchored_dir_fd(root, prefix_parts)
         except FileNotFoundError as error:
@@ -276,7 +286,12 @@ def read_without_following(
     cloexec = getattr(os, "O_CLOEXEC", 0)
     directory = open_anchored_dir_fd(root, parts[:-1])
     try:
-        file_flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | cloexec
+        file_flags = (
+            os.O_RDONLY
+            | os.O_NOFOLLOW  # type: ignore[attr-defined,unused-ignore]
+            | os.O_NONBLOCK  # type: ignore[attr-defined,unused-ignore]
+            | cloexec
+        )
         descriptor = os.open(parts[-1], file_flags, dir_fd=directory)
     finally:
         os.close(directory)
