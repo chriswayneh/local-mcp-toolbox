@@ -22,6 +22,12 @@ Use it to review changes in an approved repository, investigate recurring log er
 
 The exposed tools cannot edit your files, commit code, restart containers, execute arbitrary commands, or mutate remote systems. The server writes only its own security audit records. It runs locally and connects to an MCP client; there is no separate dashboard.
 
+## Demo
+
+<p align="center"><img src="docs/assets/demo.gif" alt="local-mcp-toolbox v1.6.1 demo: doctor on the restricted profile, a clean audit of benign agent configs, then findings on the synthetic risky fixtures" width="100%"></p>
+
+The GIF replays real v1.6.1 output against the synthetic `demo/agent-configs` fixtures. [Run the demo](docs/demo.md).
+
 ## Quick start
 
 ### Requirements
@@ -210,6 +216,7 @@ demo/             Synthetic services, logs, and intentionally insecure test fixt
 | [Client Configuration](docs/client-configuration.md) | Codex, Claude, and VS Code setup |
 | [Authenticated HTTP](docs/http-transport.md) | Optional loopback transport and bearer-token controls |
 | [Docker](docs/docker.md) | Hardened container profiles and socket-proxy guidance |
+| [Terminal demo](docs/demo.md) | How to replay or re-record the README GIF |
 | [Demo Walkthrough](docs/demo-walkthrough.md) | Synthetic end-to-end policy demonstration |
 | [CI and Release](docs/ci-and-release.md) | Quality, security, docs, package, and release controls |
 | [Release Contract](docs/release-1.5.md) | Supported v1.5 scope, acceptance evidence, operations, and limitations |
