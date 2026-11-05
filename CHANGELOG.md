@@ -5,6 +5,7 @@ All notable changes to Local MCP Toolbox are documented here. The project uses
 
 ## [Unreleased]
 
+- Docs: README terminal demo GIF (`docs/assets/demo.gif`) recorded from the v1.6.1 release wheel against the synthetic agent-config fixtures, with `docs/demo.md` and `scripts/record-demo.sh` for reproduction.
 - Tests only: Windows tests that swap a folder for a junction during the open
   and check that the Bandit snapshot and the agent-config auditor refuse it,
   and tests that `git_repository_status` reports a copied file (`C`) once,
